@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Time to watch — Revisit{% endblock %}
+{% block content %}
+
+<section class="discover-intro">
+  <span class="eyebrow">Netflix-style discovery</span>
+  <h1>What fits your time?</h1>
+  <p>Set a window and Revisit will surface saved things you can finish inside it.</p>
+</section>
+
+<form class="discover-form" method="get" action="{{ url_for('discover') }}">
+  <label for="minutes">I have</label>
+  <div class="minutes-control">
+    <input type="number" id="minutes" name="minutes" min="1" max="1440" value="{{ minutes }}" required>
+    <span>minutes</span>
+  </div>
+  <label for="collection">from</label>
+  <select id="collection" name="collection">
+    <option value="">everywhere</option>
+    {% for c in all_collections %}
+      <option value="{{ c }}" {% if c == collection_filter %}selected{% endif %}>{{ c }}</option>
+    {% endfor %}
+  </select>
+  <button type="submit" class="btn-submit">Show me something</button>
+</form>
+
+<div class="discover-heading">
+  <h2>{{ items|length }} match{% if items|length != 1 %}es{% endif %}</h2>
+  <a href="{{ url_for('add') }}">Add a timed link</a>
+</div>
+
+{% if items %}
+<div class="grid">
+  {% for item in items %}
+  <article class="card">
+    <a class="thumb-link" href="{{ item.url }}" target="_blank" rel="noopener">
+      {% if item.thumbnail %}
+        <img src="{{ item.thumbnail }}" alt="" class="thumb"
+             onerror="this.hidden=true; this.nextElementSibling.hidden=false;">
+        <div class="thumb thumb-placeholder" hidden></div>
+      {% else %}
+        <div class="thumb thumb-placeholder"></div>
+      {% endif %}
+      <span class="platform-badge platform-badge--{{ item.platform }}">{{ item.platform }}</span>
+      <span class="duration-badge">{{ item.duration_minutes }} min</span>
+    </a>
+    <div class="card-body">
+            <h3 id="title-discover-{{ item.id }}" class="card-title{% if item.title|length > 180 %} card-title--clamped{% endif %}">{{ item.title }}</h3>
+            {% if item.title|length > 180 %}
+            <button type="button" class="read-more" aria-controls="title-discover-{{ item.id }}"
+              aria-expanded="false" onclick="toggleReadMore(this)">Read more</button>
+            {% endif %}
+      <div class="card-actions">
+        <a href="{{ item.url }}" target="_blank" rel="noopener" class="card-link">Open original</a>
+      </div>
+    </div>
+  </article>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+  <p>No timed links fit this window yet.</p>
+  <a class="btn-add" href="{{ url_for('add') }}">+ Save something with a duration</a>
+</div>
+{% endif %}
+
+{% endblock %}

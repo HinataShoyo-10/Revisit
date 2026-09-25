@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Library — Revisit{% endblock %}
+{% block content %}
+
+<form class="filterbar" method="get" action="{{ url_for('index') }}">
+  <input type="text" name="q" placeholder="Search titles..." value="{{ q }}">
+
+  <select name="tag" onchange="this.form.submit()">
+    <option value="">All tags</option>
+    {% for t in all_tags %}
+      <option value="{{ t }}" {% if t == tag_filter %}selected{% endif %}>{{ t }}</option>
+    {% endfor %}
+  </select>
+
+  <select name="collection" onchange="this.form.submit()">
+    <option value="">All collections</option>
+    {% for c in all_collections %}
+      <option value="{{ c }}" {% if c == collection_filter %}selected{% endif %}>{{ c }}</option>
+    {% endfor %}
+  </select>
+
+  <button type="submit">Filter</button>
+  {% if tag_filter or collection_filter or q %}
+    <a class="clear-link" href="{{ url_for('index') }}">Clear</a>
+  {% endif %}
+</form>
+
+<div class="feature-strip">
+  <div>
+    <span class="eyebrow">Have a window?</span>
+    <strong>Pick something you can finish.</strong>
+  </div>
+  <a class="btn-secondary" href="{{ url_for('discover') }}">Open time-based discovery</a>
+</div>
+
+{% if items %}
+<div class="grid">
+  {% for item in items %}
+  <article class="card">
+    <a class="thumb-link" href="{{ item.url }}" target="_blank" rel="noopener">
+      {% if item.thumbnail %}
+        <img src="{{ item.thumbnail }}" alt="" class="thumb"
+             onerror="this.hidden=true; this.nextElementSibling.hidden=false;">
+        <div class="thumb thumb-placeholder" hidden></div>
+      {% else %}
+        <div class="thumb thumb-placeholder"></div>
+      {% endif %}
+      <span class="platform-badge platform-badge--{{ item.platform }}">{{ item.platform }}</span>
+    </a>
+    <div class="card-body">
+            <h3 id="title-{{ item.id }}" class="card-title{% if item.title|length > 180 %} card-title--clamped{% endif %}">{{ item.title }}</h3>
+            {% if item.title|length > 180 %}
+            <button type="button" class="read-more" aria-controls="title-{{ item.id }}"
+              aria-expanded="false" onclick="toggleReadMore(this)">Read more</button>
+            {% endif %}
+      {% if item.tags %}
+      <div class="pills">
+        {% for t in item.tags %}
+          <a class="pill pill-tag" href="{{ url_for('index', tag=t) }}">{{ t }}</a>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% if item.collections %}
+      <div class="pills">
+        {% for c in item.collections %}
+          <a class="pill pill-collection" href="{{ url_for('index', collection=c) }}">{{ c }}</a>
+        {% endfor %}
+      </div>
+      {% endif %}
+      <div class="card-actions">
+        <a href="{{ item.url }}" target="_blank" rel="noopener" class="card-link">Open original</a>
+        <form method="post" action="{{ url_for('delete_item', item_id=item.id) }}"
+              onsubmit="return confirm('Delete this item?');">
+          <button type="submit" class="card-delete">Delete</button>
+        </form>
+      </div>
+    </div>
+  </article>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+  <p>Nothing saved yet.</p>
+  <a class="btn-add" href="{{ url_for('add') }}">+ Save your first link</a>
+</div>
+{% endif %}
+
+{% endblock %}

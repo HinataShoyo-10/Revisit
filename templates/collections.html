@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Collections — Revisit{% endblock %}
+{% block content %}
+
+<form class="add-form add-form--inline" method="post" action="{{ url_for('collections') }}">
+  <input type="text" name="name" placeholder="New collection name" required>
+  <button type="submit" class="btn-submit">Create</button>
+</form>
+
+{% if collections %}
+<div class="collection-list">
+  {% for c in collections %}
+    <a class="collection-row" href="{{ url_for('index', collection=c.name) }}">
+      <span class="collection-name">{{ c.name }}</span>
+      <span class="collection-count">{{ c.count }}</span>
+    </a>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+  <p>No collections yet — create one above.</p>
+</div>
+{% endif %}
+
+{% endblock %}

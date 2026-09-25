@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Revisit{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header class="topbar">
+  <a class="logo" href="{{ url_for('index') }}">Revisit</a>
+  <nav>
+    <a href="{{ url_for('index') }}">Library</a>
+    <a href="{{ url_for('discover') }}">Time to watch</a>
+    <a href="{{ url_for('collections') }}">Collections</a>
+    <a class="btn-add" href="{{ url_for('add') }}">+ Save a link</a>
+  </nav>
+</header>
+<main>
+{% block content %}{% endblock %}
+</main>
+<script>
+function toggleReadMore(button) {
+  const title = document.getElementById(button.getAttribute("aria-controls"));
+  const expanded = title.classList.toggle("is-expanded");
+  button.textContent = expanded ? "Show less" : "Read more";
+  button.setAttribute("aria-expanded", expanded);
+}
+</script>
+</body>
+</html>

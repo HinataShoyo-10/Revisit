@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Save a link — Revisit{% endblock %}
+{% block content %}
+
+<form class="add-form" method="post" action="{{ url_for('add') }}">
+  <label for="url">Paste the link</label>
+  <input type="url" id="url" name="url" placeholder="https://youtube.com/... or https://instagram.com/reel/..." required>
+
+  <label for="title">Title (optional — we'll try to fetch one)</label>
+  <input type="text" id="title" name="title" placeholder="Leave blank to auto-detect">
+
+  <label for="duration_minutes">How many minutes will it take?</label>
+  <input type="number" id="duration_minutes" name="duration_minutes" min="1" max="1440" placeholder="e.g. 12">
+  <p class="hint">Add a rough length so Time to watch can find it later. Instagram links still save even when their preview is blocked.</p>
+
+  <label for="tags">Tags</label>
+  <input type="text" id="tags" name="tags" placeholder="cooking, quick-recipes, later">
+  <p class="hint">Comma-separated. New tags are created automatically.</p>
+
+  {% if all_collections %}
+  <label>Add to collections</label>
+  <div class="checkbox-list">
+    {% for c in all_collections %}
+    <label class="checkbox-item">
+      <input type="checkbox" name="collections" value="{{ c }}"> {{ c }}
+    </label>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <label for="new_collection">Or create a new collection</label>
+  <input type="text" id="new_collection" name="new_collection" placeholder="e.g. Recipes to try">
+
+  <button type="submit" class="btn-submit">Save link</button>
+</form>
+
+{% endblock %}
