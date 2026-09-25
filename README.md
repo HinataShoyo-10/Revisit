@@ -12,6 +12,20 @@ python app.py
 ```
 Visit http://127.0.0.1:5000
 
+## Database
+
+Revisit uses SQLite and creates `reelbox.db` automatically beside `app.py` on
+first startup. The database stores saved links, preview metadata, tags,
+collections, and durations. Existing databases are migrated automatically when
+the app starts, including the `duration_minutes` column used by time-based
+discovery.
+
+The local database is excluded by `.gitignore`, so it is not committed to
+GitHub. A fresh deployment therefore starts with an empty library. Add links
+again in production, or copy a database to the deployment's persistent storage
+before starting the app. Do not use an ephemeral filesystem for a library you
+need to keep: redeploys can erase SQLite data.
+
 ## Deploy for free (get a shareable URL) — PythonAnywhere
 
 PythonAnywhere's free tier: no credit card, persistent disk (your SQLite file
@@ -38,7 +52,9 @@ Also free, but the free tier's disk is wiped on every redeploy (fine if you
 rarely change the code, annoying if you don't want to lose saved links on a
 future update). Steps: push this folder to a GitHub repo → New Web Service on
 Render → connect the repo → build command `pip install -r requirements.txt`,
-start command `gunicorn app:app`.
+start command `gunicorn app:app`. Set the service's working directory to the
+repository root. For persistent SQLite data, use a persistent disk and set its
+mount path so it contains the directory where `reelbox.db` is created.
 
 ## Time-based discovery
 
