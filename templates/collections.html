@@ -2,18 +2,67 @@
 {% block title %}Collections — Revisit{% endblock %}
 {% block content %}
 
-<form class="add-form add-form--inline" method="post" action="{{ url_for('collections') }}">
-  <input type="text" name="name" placeholder="New collection name" required>
-  <button type="submit" class="btn-submit">Create</button>
-</form>
+<section class="collection-tools" aria-label="Collection actions">
+  <form class="collection-tool" method="post" action="{{ url_for('collections') }}">
+    <input type="hidden" name="action" value="create">
+    <label for="new-collection-name">Create collection</label>
+    <div class="collection-tool-controls">
+      <input id="new-collection-name" type="text" name="name" placeholder="Collection name" required>
+      <button type="submit">Create</button>
+    </div>
+  </form>
+
+  {% if convertible_tags %}
+  <form class="collection-tool" method="post" action="{{ url_for('collections') }}">
+    <input type="hidden" name="action" value="convert_tag">
+    <label for="tag-to-collection">Convert tag to collection</label>
+    <div class="collection-tool-controls">
+      <select id="tag-to-collection" name="tag" required>
+        <option value="">Choose a tag</option>
+        {% for tag in convertible_tags %}
+        <option value="{{ tag }}">{{ tag }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit">Convert</button>
+    </div>
+  </form>
+  {% endif %}
+</section>
+
+{% if collection_error == 'name_exists' %}
+<p class="collection-message" role="alert">That collection name is already in use.</p>
+{% elif renamed %}
+<p class="collection-message" role="status">Collection renamed to {{ renamed }}.</p>
+{% elif converted %}
+<p class="collection-message" role="status">Tag “{{ converted }}” is now also a collection.</p>
+{% endif %}
 
 {% if collections %}
 <div class="collection-list">
   {% for c in collections %}
-    <a class="collection-row" href="{{ url_for('index', collection=c.name) }}">
-      <span class="collection-name">{{ c.name }}</span>
-      <span class="collection-count">{{ c.count }}</span>
-    </a>
+    <div class="collection-row">
+      <div class="collection-row-head">
+        <a class="collection-link" href="{{ url_for('index', collection=c.name) }}">
+          <span class="collection-name">{{ c.name }}</span>
+          <span class="collection-count">{{ c.count }}</span>
+        </a>
+        <details class="collection-editor">
+          <summary class="collection-edit-icon" aria-label="Edit collection name" title="Edit collection name">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M12 20h9" />
+              <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z" />
+            </svg>
+          </summary>
+          <form class="collection-rename" method="post" action="{{ url_for('collections') }}">
+            <input type="hidden" name="action" value="rename">
+            <input type="hidden" name="old_name" value="{{ c.name }}">
+            <label class="sr-only" for="rename-{{ loop.index }}">New name for {{ c.name }}</label>
+            <input id="rename-{{ loop.index }}" type="text" name="new_name" value="{{ c.name }}" required>
+            <button type="submit">Save name</button>
+          </form>
+        </details>
+      </div>
+    </div>
   {% endfor %}
 </div>
 {% else %}

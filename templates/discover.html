@@ -25,39 +25,63 @@
 </form>
 
 <div class="discover-heading">
-  <h2>{{ items|length }} match{% if items|length != 1 %}es{% endif %}</h2>
+  <h2>{{ items|length }} fit{% if items|length != 1 %}s{% endif %} in {{ minutes }} min</h2>
   <a href="{{ url_for('add') }}">Add a timed link</a>
 </div>
+
+{% macro render_item(item, unknown=false) %}
+<article class="card">
+  <a class="thumb-link" href="{{ item.url }}" target="_blank" rel="noopener">
+    {% if item.thumbnail %}
+      <img src="{{ item.thumbnail }}" alt="" class="thumb"
+           onerror="this.hidden=true; this.nextElementSibling.hidden=false;">
+      <div class="thumb thumb-placeholder" hidden></div>
+    {% else %}
+      <div class="thumb thumb-placeholder"></div>
+    {% endif %}
+    <span class="platform-badge platform-badge--{{ item.platform }}">{{ item.platform }}</span>
+    {% if unknown %}
+      <span class="duration-badge duration-badge--unknown">Unknown</span>
+    {% else %}
+      <span class="duration-badge">{{ item.duration_minutes }} min</span>
+    {% endif %}
+  </a>
+  <div class="card-body">
+    <h3 id="title-discover-{{ item.id }}" class="card-title{% if item.title|length > 180 %} card-title--clamped{% endif %}">{{ item.title }}</h3>
+    {% if item.title|length > 180 %}
+    <button type="button" class="read-more" aria-controls="title-discover-{{ item.id }}"
+      aria-expanded="false" onclick="toggleReadMore(this)">Read more</button>
+    {% endif %}
+    <div class="card-actions">
+      <a href="{{ item.url }}" target="_blank" rel="noopener" class="card-link">Open original</a>
+    </div>
+  </div>
+</article>
+{% endmacro %}
 
 {% if items %}
 <div class="grid">
   {% for item in items %}
-  <article class="card">
-    <a class="thumb-link" href="{{ item.url }}" target="_blank" rel="noopener">
-      {% if item.thumbnail %}
-        <img src="{{ item.thumbnail }}" alt="" class="thumb"
-             onerror="this.hidden=true; this.nextElementSibling.hidden=false;">
-        <div class="thumb thumb-placeholder" hidden></div>
-      {% else %}
-        <div class="thumb thumb-placeholder"></div>
-      {% endif %}
-      <span class="platform-badge platform-badge--{{ item.platform }}">{{ item.platform }}</span>
-      <span class="duration-badge">{{ item.duration_minutes }} min</span>
-    </a>
-    <div class="card-body">
-            <h3 id="title-discover-{{ item.id }}" class="card-title{% if item.title|length > 180 %} card-title--clamped{% endif %}">{{ item.title }}</h3>
-            {% if item.title|length > 180 %}
-            <button type="button" class="read-more" aria-controls="title-discover-{{ item.id }}"
-              aria-expanded="false" onclick="toggleReadMore(this)">Read more</button>
-            {% endif %}
-      <div class="card-actions">
-        <a href="{{ item.url }}" target="_blank" rel="noopener" class="card-link">Open original</a>
-      </div>
-    </div>
-  </article>
+  {{ render_item(item) }}
   {% endfor %}
 </div>
-{% else %}
+{% endif %}
+
+{% if unknown_items %}
+<section class="unknown-duration-section">
+  <div class="discover-heading">
+    <h2>Duration unknown</h2>
+    <span>These may fit; their length could not be detected.</span>
+  </div>
+  <div class="grid">
+    {% for item in unknown_items %}
+    {{ render_item(item, true) }}
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{% if not items and not unknown_items %}
 <div class="empty-state">
   <p>No timed links fit this window yet.</p>
   <a class="btn-add" href="{{ url_for('add') }}">+ Save something with a duration</a>

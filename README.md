@@ -1,10 +1,13 @@
 # Revisit
 
 Paste-a-link organizer for saved YouTube/Instagram/TikTok content — preview
-thumbnails, multi-tags, collections, and time-based discovery. Flask + SQLite,
+thumbnails, multi-tags, collections, and time-based discovery. Flask + MongoDB,
 one file of backend logic, no JS framework.
 
 ## Run locally
+
+Set `APP_PASSWORD` in `atlas-credentials.env` before starting the app. The
+optional `APP_USERNAME` defaults to `revisit`.
 
 ```
 pip install -r requirements.txt
@@ -14,47 +17,46 @@ Visit http://127.0.0.1:5000
 
 ## Database
 
-Revisit uses SQLite and creates `reelbox.db` automatically beside `app.py` on
-first startup. The database stores saved links, preview metadata, tags,
-collections, and durations. Existing databases are migrated automatically when
-the app starts, including the `duration_minutes` column used by time-based
-discovery.
+Revisit connects to MongoDB Atlas using `MONGODB_URI`. For local development,
+put the connection string in `atlas-credentials.env` beside `app.py` (the file
+is ignored by Git), or provide it as an environment variable. The optional
+`MONGODB_DATABASE` variable selects the database; it defaults to `revisit`.
 
-The local database is excluded by `.gitignore`, so it is not committed to
-GitHub. A fresh deployment therefore starts with an empty library. Add links
-again in production, or copy a database to the deployment's persistent storage
-before starting the app. Do not use an ephemeral filesystem for a library you
-need to keep: redeploys can erase SQLite data.
+The database uses three collections:
 
-## Deploy for free (get a shareable URL) — PythonAnywhere
+- `items`: one document per saved link, including preview fields, duration,
+   tags, and collection names embedded as arrays.
+- `collections`: one document per collection name, including collections with
+   no saved links.
+- `imports`: pending links waiting for review and categorization.
 
-PythonAnywhere's free tier: no credit card, persistent disk (your SQLite file
-survives restarts), always-on, gives you `https://<yourname>.pythonanywhere.com`.
+Use **Import inbox** to paste up to 100 URLs per batch. Save a large batch into
+one staging collection (default `Imported`), then use **Organize** on library
+items to assign their final titles, tags, durations, and collections. Duplicate,
+invalid, and already-saved URLs are reported and skipped.
 
-1. Create a free account at pythonanywhere.com
-2. **Files** tab → upload this whole `revisit` folder (or use a Bash console
-   there and `git clone` if you push this to GitHub first)
-3. Open a **Bash console** in PythonAnywhere and run:
-   ```
-   cd revisit
-   pip install --user -r requirements.txt
-   ```
-4. **Web** tab → "Add a new web app" → choose **Flask** → point it at
-   `revisit/app.py`
-5. In the web app's WSGI config file, make sure it imports your `app` object
-   from `app.py` (PythonAnywhere's wizard sets this up for you when you pick
-   Flask + the right file path)
-6. Hit **Reload**, then open the URL it gives you — that's what you share
+Indexes are created automatically on startup. Existing `reelbox.db` data is not
+imported automatically; export or migrate it before removing the local file.
 
-## Alternative — Render.com
+## Deployment
 
-Also free, but the free tier's disk is wiped on every redeploy (fine if you
-rarely change the code, annoying if you don't want to lose saved links on a
-future update). Steps: push this folder to a GitHub repo → New Web Service on
-Render → connect the repo → build command `pip install -r requirements.txt`,
-start command `gunicorn app:app`. Set the service's working directory to the
-repository root. For persistent SQLite data, use a persistent disk and set its
-mount path so it contains the directory where `reelbox.db` is created.
+This repository includes a Render Blueprint in `render.yaml`. In Render, create
+a new Blueprint from the repository and provide `MONGODB_URI` and a strong
+`APP_PASSWORD` when prompted. `APP_USERNAME` defaults to `revisit` and
+`MONGODB_DATABASE` defaults to `revisit`. The app uses HTTP Basic Auth, and the
+service listens on Render's `PORT` and uses `/healthz` to verify MongoDB access.
+
+In MongoDB Atlas, allow network access from the deployed service before
+deploying. For production, use a restricted IP access list where your hosting
+plan supports stable outbound IPs; avoid leaving Atlas open to `0.0.0.0/0`.
+Keep the connection string in the host's secret environment settings, not in
+the repository. Since the library is stored in MongoDB Atlas, it does not
+depend on the host's local disk.
+
+For other hosts, install dependencies with `pip install -r requirements.txt`
+and start with `gunicorn --bind 0.0.0.0:$PORT app:app`. Configure `MONGODB_URI`
+and `APP_PASSWORD` as secrets, plus optional `APP_USERNAME` and
+`MONGODB_DATABASE`, in the hosting provider's environment. Serve behind HTTPS.
 
 ## Time-based discovery
 
@@ -63,7 +65,16 @@ watch** page then finds saved links that fit inside a selected time window, with
 an optional collection filter. Revisit automatically tries to read duration
 metadata from YouTube and public OG metadata from other platforms; the manual
 duration remains available when a platform blocks that request. Links without
-a duration stay in the library but are not included in timed results.
+a detected duration also appear in a separate **Duration unknown** group and
+are not counted as confirmed fits.
+
+## Search and organization
+
+Library search matches titles, source platforms, URLs, tags, and collection
+names. Collection names can be edited from the Collections page. Converting a
+tag creates a same-named collection and adds every matching item without
+removing the tag. Collections are removed automatically when moving or deleting
+items leaves them empty.
 
 ## Preview behavior
 
@@ -75,8 +86,7 @@ thumbnail is available. Expired thumbnail URLs also fall back to the platform
 placeholder in the browser. YouTube previews are reliable (uses YouTube's own
 oEmbed endpoint).
 
-## Not built (say the word if you want these next)
+## Not built
 
-- Editing tags/collections on an existing item (currently: delete + re-add)
 - Multi-user accounts / login
 - Browser extension or share-sheet (you'd paste the link manually)

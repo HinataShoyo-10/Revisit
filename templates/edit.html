@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Organize item — Revisit{% endblock %}
+{% block content %}
+
+<section class="edit-intro">
+  <span class="eyebrow">Library</span>
+  <h1>Organize item</h1>
+  <a href="{{ item.url }}" target="_blank" rel="noopener">Open original video</a>
+</section>
+
+<form class="add-form edit-form" method="post" action="{{ url_for('edit_item', item_id=item.id) }}">
+  <label for="title">Title</label>
+  <input type="text" id="title" name="title" value="{{ item.title }}" required>
+
+  <label for="duration_minutes">Duration in minutes</label>
+  <input type="number" id="duration_minutes" name="duration_minutes" min="1" max="1440" value="{{ item.duration_minutes or '' }}" placeholder="Unknown">
+
+  <label for="tags">Tags</label>
+  <input type="text" id="tags" name="tags" value="{{ item.tags|join(', ') }}" placeholder="Comma-separated tags">
+
+  {% if all_collections %}
+  <fieldset class="edit-collections">
+    <legend>Collections</legend>
+    {% for collection in all_collections %}
+    <label class="checkbox-item">
+      <input type="checkbox" name="collections" value="{{ collection }}" {% if collection in item.collections %}checked{% endif %}> {{ collection }}
+    </label>
+    {% endfor %}
+  </fieldset>
+  {% endif %}
+
+  <label for="new_collection">Create a collection</label>
+  <input type="text" id="new_collection" name="new_collection" placeholder="e.g. Recipes to try">
+  <button type="submit" class="btn-submit">Save changes</button>
+</form>
+
+{% endblock %}

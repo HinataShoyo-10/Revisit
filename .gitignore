@@ -9,6 +9,7 @@ env/
 *.db
 *.sqlite
 *.sqlite3
+atlas-credentials.env
 
 .env
 .env.*

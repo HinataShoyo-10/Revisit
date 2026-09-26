@@ -3,7 +3,7 @@
 {% block content %}
 
 <form class="filterbar" method="get" action="{{ url_for('index') }}">
-  <input type="text" name="q" placeholder="Search titles..." value="{{ q }}">
+  <input type="text" name="q" placeholder="Search titles, sources, tags, collections..." value="{{ q }}">
 
   <select name="tag" onchange="this.form.submit()">
     <option value="">All tags</option>
@@ -69,6 +69,7 @@
       {% endif %}
       <div class="card-actions">
         <a href="{{ item.url }}" target="_blank" rel="noopener" class="card-link">Open original</a>
+        <a href="{{ url_for('edit_item', item_id=item.id) }}" class="card-link">Organize</a>
         <form method="post" action="{{ url_for('delete_item', item_id=item.id) }}"
               onsubmit="return confirm('Delete this item?');">
           <button type="submit" class="card-delete">Delete</button>

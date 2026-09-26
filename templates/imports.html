@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+{% block title %}Import inbox — Revisit{% endblock %}
+{% block content %}
+
+<section class="import-intro">
+  <span class="eyebrow">Bring your saves together</span>
+  <h1>Import inbox</h1>
+  <p>Paste saved video links, one per line. Sort them into your library when you are ready.</p>
+</section>
+
+<form class="import-batch" method="post" action="{{ url_for('imports') }}">
+  <label for="import-urls">Video links</label>
+  <textarea id="import-urls" name="urls" rows="5" placeholder="https://www.instagram.com/reel/...&#10;https://www.youtube.com/watch?v=..." required></textarea>
+  <div class="import-batch-actions">
+    <span>Up to 100 links per batch</span>
+    <button type="submit" class="btn-submit">Add to inbox</button>
+  </div>
+</form>
+
+{% if queued or already_saved or duplicate or invalid %}
+<p class="import-feedback" role="status">
+  Added {{ queued }}{% if already_saved %}; already in library: {{ already_saved }}{% endif %}{% if duplicate %}; already queued: {{ duplicate }}{% endif %}{% if invalid %}; invalid or over limit: {{ invalid }}{% endif %}.
+</p>
+{% endif %}
+{% if cleared %}
+<p class="import-feedback" role="status">Cleared {{ cleared }} pending link{% if cleared != 1 %}s{% endif %} from the inbox. Saved library items were not changed.</p>
+{% endif %}
+
+<div class="import-list-heading">
+  <h2>Waiting to sort</h2>
+  <span>{{ pending|length }} queued</span>
+  {% if pending %}
+  <form method="post" action="{{ url_for('clear_imports') }}" onsubmit="return confirm('Remove all pending links from the import inbox? Saved library items will not be affected.');">
+    <button type="submit" class="import-clear-button">Clear inbox</button>
+  </form>
+  {% endif %}
+</div>
+
+{% if pending %}
+<form class="import-bulk-save" method="post" action="{{ url_for('save_all_imports') }}">
+  <div>
+    <strong>Stage the whole batch</strong>
+    <span>Save all queued links together, then organize them from the library.</span>
+  </div>
+  {% for item in pending %}
+  <input type="hidden" name="import_ids" value="{{ item.id }}">
+  {% endfor %}
+  <label for="import-collection">Collection</label>
+  <input id="import-collection" name="collection" type="text" value="Imported" required>
+  <button type="submit" class="btn-submit">Save {{ pending|length }} links</button>
+</form>
+
+{% if moved or already_saved %}
+<p class="import-feedback" role="status">
+  Saved {{ moved }} to {{ collection }}{% if already_saved %}; skipped {{ already_saved }} already in the library{% endif %}.
+</p>
+{% endif %}
+
+{% if selected_moved or skipped_existing or selection_error %}
+<p class="import-feedback" role="status">
+  Moved {{ selected_moved }} selected link{% if selected_moved != 1 %}s{% endif %}{% if skipped_existing %}; skipped {{ skipped_existing }} already in the library{% endif %}{% if selection_error %}; {{ selection_error }} need a collection choice and remain in the inbox{% endif %}.
+</p>
+{% endif %}
+
+<form class="import-selection-bar" id="import-selection-form" method="post" action="{{ url_for('save_selected_imports') }}">
+  <span id="selected-import-count" aria-live="polite">0 selected</span>
+  <span class="import-selection-error" id="import-selection-error" role="alert" hidden>Select a collection for each selected link.</span>
+  <div id="selected-import-fields"></div>
+  <button type="submit" class="btn-submit" disabled>Move selected to library</button>
+</form>
+
+<div class="import-list">
+  {% for item in pending %}
+  <article class="import-preview-card" data-import-id="{{ item.id }}" data-preview-endpoint="{{ url_for('import_preview', import_id=item.id) }}">
+    <label class="import-select-wrap">
+      <input class="import-select" type="checkbox" aria-label="Select {{ item.url }} to move">
+      <span class="sr-only">Select this link for bulk move</span>
+    </label>
+    <a class="import-preview-media" href="{{ item.url }}" target="_blank" rel="noopener">
+      <div class="thumb thumb-placeholder import-preview-placeholder">Loading preview...</div>
+      <img class="thumb import-preview-image" alt="" hidden>
+      {% if item.duration_minutes %}<span class="duration-badge">{{ item.duration_minutes }} min</span>{% endif %}
+      <span class="platform-badge platform-badge--{{ item.platform }}">{{ item.platform }}</span>
+    </a>
+    <div class="import-preview-body">
+      <h3 class="import-preview-title">Loading preview...</h3>
+      <a class="import-preview-url" href="{{ item.url }}" target="_blank" rel="noopener">{{ item.url }}</a>
+      <span class="import-preview-duration" {% if not item.duration_minutes %}hidden{% endif %}>{% if item.duration_minutes %}{{ item.duration_minutes }} min{% endif %}</span>
+      <div class="import-quick-action">
+        <label class="sr-only" for="import-collection-{{ item.id }}">Move to collection</label>
+        <select id="import-collection-{{ item.id }}" name="collections">
+          <option value="">Choose collection</option>
+          {% for collection in all_collections %}
+          <option value="{{ collection }}">{{ collection }}</option>
+          {% endfor %}
+        </select>
+        <input type="text" name="new_collection" placeholder="Or create collection">
+        <input type="text" name="tags" list="saved-tags" placeholder="Tags, comma-separated">
+      </div>
+      <form method="post" action="{{ url_for('dismiss_import', import_id=item.id) }}">
+        <button type="submit" class="import-dismiss">Dismiss</button>
+      </form>
+    </div>
+  </article>
+  {% endfor %}
+</div>
+{% else %}
+{% if moved or already_saved %}
+<p class="import-feedback" role="status">
+  Saved {{ moved }} to {{ collection }}{% if already_saved %}; skipped {{ already_saved }} already in the library{% endif %}.
+</p>
+{% endif %}
+<div class="empty-state import-empty">
+  <p>Your inbox is clear.</p>
+</div>
+{% endif %}
+
+{% endblock %}
+{% block scripts %}
+<script>
+(() => {
+  const selectionForm = document.getElementById("import-selection-form");
+  if (selectionForm) {
+    const selectedCount = document.getElementById("selected-import-count");
+    const selectionError = document.getElementById("import-selection-error");
+    const hiddenFields = document.getElementById("selected-import-fields");
+    const submitButton = selectionForm.querySelector("button[type='submit']");
+    const cards = Array.from(document.querySelectorAll(".import-preview-card"));
+
+    function selectedCards() {
+      return cards.filter(card => card.querySelector(".import-select").checked);
+    }
+
+    function updateSelection() {
+      const count = selectedCards().length;
+      selectedCount.textContent = `${count} selected`;
+      submitButton.disabled = count === 0;
+      selectionError.hidden = true;
+    }
+
+    cards.forEach(card => card.querySelector(".import-select").addEventListener("change", updateSelection));
+    cards.forEach(card => {
+      const controls = card.querySelector(".import-quick-action");
+      const checkbox = card.querySelector(".import-select");
+      const autoSelect = () => {
+        const collection = controls.querySelector("select[name='collections']").value;
+        const newCollection = controls.querySelector("input[name='new_collection']").value.trim();
+        const tags = controls.querySelector("input[name='tags']").value.trim();
+        if (collection || newCollection || tags) {
+          checkbox.checked = true;
+          updateSelection();
+        }
+      };
+      controls.querySelector("select[name='collections']").addEventListener("change", autoSelect);
+      controls.querySelectorAll("input").forEach(input => input.addEventListener("input", autoSelect));
+    });
+    selectionForm.addEventListener("submit", event => {
+      hiddenFields.replaceChildren();
+      const selected = selectedCards();
+      if (!selected.length) {
+        event.preventDefault();
+        return;
+      }
+
+      for (const card of selected) {
+        const id = card.dataset.importId;
+        const controls = card.querySelector(".import-quick-action");
+        const collection = controls.querySelector("select[name='collections']").value;
+        const newCollection = controls.querySelector("input[name='new_collection']").value.trim();
+        if (!collection && !newCollection) {
+          event.preventDefault();
+          selectionError.hidden = false;
+          controls.querySelector("select[name='collections']").focus();
+          return;
+        }
+
+        [
+          ["import_ids", id],
+          [`collection_${id}`, newCollection || collection],
+          [`tags_${id}`, controls.querySelector("input[name='tags']").value],
+        ].forEach(([name, value]) => {
+          const input = document.createElement("input");
+          input.type = "hidden";
+          input.name = name;
+          input.value = value;
+          hiddenFields.append(input);
+        });
+      }
+    });
+  }
+
+  const cards = Array.from(document.querySelectorAll(".import-preview-card[data-preview-endpoint]"));
+  const waiting = [];
+  let active = 0;
+  const concurrency = 3;
+
+  function runNext() {
+    while (active < concurrency && waiting.length) {
+      const card = waiting.shift();
+      active += 1;
+      fetch(card.dataset.previewEndpoint, { method: "POST" })
+        .then(response => {
+          if (!response.ok) throw new Error("Preview request failed");
+          return response.json();
+        })
+        .then(preview => {
+          const title = card.querySelector(".import-preview-title");
+          const placeholder = card.querySelector(".import-preview-placeholder");
+          const image = card.querySelector(".import-preview-image");
+          const duration = card.querySelector(".import-preview-duration");
+          title.textContent = preview.title || "Preview unavailable";
+          if (preview.thumbnail) {
+            image.src = preview.thumbnail;
+            image.hidden = false;
+            placeholder.hidden = true;
+            image.onerror = () => {
+              image.hidden = true;
+              placeholder.hidden = false;
+            };
+          } else {
+            placeholder.textContent = "No preview image";
+          }
+          if (preview.duration_minutes) {
+            duration.textContent = `${preview.duration_minutes} min`;
+            duration.hidden = false;
+            const media = card.querySelector(".import-preview-media");
+            const badge = media.querySelector(".duration-badge") || document.createElement("span");
+            badge.className = "duration-badge";
+            badge.textContent = duration.textContent;
+            if (!badge.parentElement) media.append(badge);
+          }
+        })
+        .catch(() => {
+          card.querySelector(".import-preview-title").textContent = "Preview unavailable";
+          card.querySelector(".import-preview-placeholder").textContent = "Open link to view";
+        })
+        .finally(() => {
+          active -= 1;
+          runNext();
+        });
+    }
+  }
+
+  function queuePreview(card) {
+    waiting.push(card);
+    runNext();
+  }
+
+  if ("IntersectionObserver" in window) {
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          observer.unobserve(entry.target);
+          queuePreview(entry.target);
+        }
+      });
+    }, { rootMargin: "240px 0px" });
+    cards.forEach(card => observer.observe(card));
+  } else {
+    cards.forEach(queuePreview);
+  }
+})();
+</script>
+{% endblock %}

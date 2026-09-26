@@ -15,8 +15,25 @@
     <a href="{{ url_for('index') }}">Library</a>
     <a href="{{ url_for('discover') }}">Time to watch</a>
     <a href="{{ url_for('collections') }}">Collections</a>
-    <a class="btn-add" href="{{ url_for('add') }}">+ Save a link</a>
+    <a href="{{ url_for('imports') }}">Import inbox</a>
+    <a class="btn-add" href="{{ url_for('add') }}">More options</a>
   </nav>
+  <form class="quick-save" method="post" action="{{ url_for('add') }}">
+    <input type="url" name="url" aria-label="Link to save" placeholder="Paste a video link..." required>
+    <input type="text" name="tags" list="saved-tags" aria-label="Optional tag" placeholder="Tag (optional)">
+    <datalist id="saved-tags">
+      {% for tag in all_tags %}
+        <option value="{{ tag }}"></option>
+      {% endfor %}
+    </datalist>
+    <select name="collections" aria-label="Optional collection">
+      <option value="">No collection</option>
+      {% for collection in all_collections %}
+        <option value="{{ collection }}">{{ collection }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit">Save link</button>
+  </form>
 </header>
 <main>
 {% block content %}{% endblock %}
@@ -29,5 +46,6 @@ function toggleReadMore(button) {
   button.setAttribute("aria-expanded", expanded);
 }
 </script>
+{% block scripts %}{% endblock %}
 </body>
 </html>
