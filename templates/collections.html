@@ -4,6 +4,7 @@
 
 <section class="collection-tools" aria-label="Collection actions">
   <form class="collection-tool" method="post" action="{{ url_for('collections') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="create">
     <label for="new-collection-name">Create collection</label>
     <div class="collection-tool-controls">
@@ -14,6 +15,7 @@
 
   {% if convertible_tags %}
   <form class="collection-tool" method="post" action="{{ url_for('collections') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="convert_tag">
     <label for="tag-to-collection">Convert tag to collection</label>
     <div class="collection-tool-controls">
@@ -54,6 +56,7 @@
             </svg>
           </summary>
           <form class="collection-rename" method="post" action="{{ url_for('collections') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="action" value="rename">
             <input type="hidden" name="old_name" value="{{ c.name }}">
             <label class="sr-only" for="rename-{{ loop.index }}">New name for {{ c.name }}</label>

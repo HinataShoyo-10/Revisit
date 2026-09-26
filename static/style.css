@@ -794,6 +794,77 @@ main {
   margin-bottom: 16px;
 }
 
+.auth-page {
+  width: min(100%, 440px);
+  margin: 5vh auto 0;
+  padding: 28px;
+  border: var(--border);
+  background: var(--card-bg);
+  box-shadow: var(--shadow);
+}
+
+.auth-page h1 {
+  margin: 0 0 8px;
+  font-size: 2.25rem;
+  line-height: 1.1;
+}
+
+.auth-copy { margin: 0 0 20px; color: #444; }
+
+.auth-form {
+  display: grid;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.auth-form label { font-weight: 600; }
+
+.auth-form input {
+  width: 100%;
+  min-width: 0;
+  margin-bottom: 8px;
+  padding: 12px;
+  border: 2px solid var(--ink);
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+}
+
+.auth-form input:focus-visible,
+.auth-form button:focus-visible,
+.logout-button:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.auth-form .btn-submit { width: 100%; margin-top: 6px; }
+
+.auth-errors {
+  margin: 16px 0 0;
+  padding: 12px 16px;
+  border: 2px solid #a32616;
+  background: #fff0ed;
+  color: #7f1d12;
+}
+
+.auth-switch { margin: 20px 0 0; }
+.account-name { font-size: 0.82rem; font-weight: 600; }
+.logout-form { margin: 0; }
+
+.logout-button {
+  padding: 8px 10px;
+  border: 2px solid var(--ink);
+  background: var(--card-bg);
+  font: 600 0.85rem "Space Grotesk", sans-serif;
+  cursor: pointer;
+}
+
+.auth-message {
+  padding: 10px 14px;
+  border: 2px solid var(--ink);
+  background: var(--accent-3);
+}
+
 @media (max-width: 600px) {
   .topbar { padding: 16px 20px; grid-template-columns: 1fr; }
   main { padding: 24px 16px 60px; }
@@ -805,6 +876,7 @@ main {
     gap: 12px;
     font-size: 0.85rem;
   }
+  .auth-page { margin-top: 2vh; padding: 22px; }
   .quick-save { display: grid; grid-template-columns: 1fr 1fr; }
   .quick-save input,
   .quick-save button { grid-column: 1 / -1; }

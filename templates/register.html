@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Create account — Revisit{% endblock %}
+{% block content %}
+<section class="auth-page">
+  <span class="eyebrow">Your own library</span>
+  <h1>Create account</h1>
+  <p class="auth-copy">Your saved links and collections stay private to your account.</p>
+  {% if errors %}
+  <ul class="auth-errors" role="alert">
+    {% for error in errors %}<li>{{ error }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+  <form class="auth-form" method="post" action="{{ url_for('register') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label for="username">Username</label>
+    <input id="username" name="username" type="text" value="{{ username }}" minlength="3" maxlength="30" pattern="[A-Za-z0-9_]{3,30}" autocomplete="username" required>
+    <label for="email">Email</label>
+    <input id="email" name="email" type="email" value="{{ email }}" maxlength="254" autocomplete="email" required>
+    <label for="password">Four-digit PIN</label>
+    <input id="password" name="password" type="password" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" autocomplete="new-password" required>
+    <button type="submit" class="btn-submit">Create account</button>
+  </form>
+  <p class="auth-switch">Already registered? <a href="{{ url_for('login') }}">Log in</a></p>
+</section>
+{% endblock %}

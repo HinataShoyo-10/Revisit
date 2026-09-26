@@ -9,6 +9,7 @@
 </section>
 
 <form class="import-batch" method="post" action="{{ url_for('imports') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <label for="import-urls">Video links</label>
   <textarea id="import-urls" name="urls" rows="5" placeholder="https://www.instagram.com/reel/...&#10;https://www.youtube.com/watch?v=..." required></textarea>
   <div class="import-batch-actions">
@@ -31,6 +32,7 @@
   <span>{{ pending|length }} queued</span>
   {% if pending %}
   <form method="post" action="{{ url_for('clear_imports') }}" onsubmit="return confirm('Remove all pending links from the import inbox? Saved library items will not be affected.');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button type="submit" class="import-clear-button">Clear inbox</button>
   </form>
   {% endif %}
@@ -38,6 +40,7 @@
 
 {% if pending %}
 <form class="import-bulk-save" method="post" action="{{ url_for('save_all_imports') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div>
     <strong>Stage the whole batch</strong>
     <span>Save all queued links together, then organize them from the library.</span>
@@ -63,6 +66,7 @@
 {% endif %}
 
 <form class="import-selection-bar" id="import-selection-form" method="post" action="{{ url_for('save_selected_imports') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <span id="selected-import-count" aria-live="polite">0 selected</span>
   <span class="import-selection-error" id="import-selection-error" role="alert" hidden>Select a collection for each selected link.</span>
   <div id="selected-import-fields"></div>
@@ -98,6 +102,7 @@
         <input type="text" name="tags" list="saved-tags" placeholder="Tags, comma-separated">
       </div>
       <form method="post" action="{{ url_for('dismiss_import', import_id=item.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="import-dismiss">Dismiss</button>
       </form>
     </div>
@@ -198,7 +203,10 @@
     while (active < concurrency && waiting.length) {
       const card = waiting.shift();
       active += 1;
-      fetch(card.dataset.previewEndpoint, { method: "POST" })
+      fetch(card.dataset.previewEndpoint, {
+        method: "POST",
+        headers: { "X-CSRFToken": {{ csrf_token()|tojson }} }
+      })
         .then(response => {
           if (!response.ok) throw new Error("Preview request failed");
           return response.json();

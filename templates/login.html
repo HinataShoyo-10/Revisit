@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Log in — Revisit{% endblock %}
+{% block content %}
+<section class="auth-page">
+  <span class="eyebrow">Welcome back</span>
+  <h1>Log in</h1>
+  {% if error %}<p class="auth-errors" role="alert">{{ error }}</p>{% endif %}
+  <form class="auth-form" method="post" action="{{ url_for('login', next=request.args.get('next', '')) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label for="username">Username</label>
+    <input id="username" name="username" type="text" value="{{ username }}" autocomplete="username" required>
+    <label for="password">PIN</label>
+    <input id="password" name="password" type="password" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" autocomplete="current-password" required>
+    <button type="submit" class="btn-submit">Log in</button>
+  </form>
+  <p class="auth-switch">New to Revisit? <a href="{{ url_for('register') }}">Create an account</a></p>
+</section>
+{% endblock %}

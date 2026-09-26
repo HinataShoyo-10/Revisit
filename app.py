@@ -1,65 +1,155 @@
 import os
 import re
 import secrets
+import hashlib
 import uuid
 from html import unescape
 from math import ceil
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
 
 import requests
 from dotenv import load_dotenv
-from flask import Flask, Response, jsonify, redirect, render_template, request, url_for
+from flask import Flask, jsonify, redirect, render_template, request, url_for
+from flask_login import LoginManager, UserMixin, current_user, login_required, login_user, logout_user
+from flask_wtf.csrf import CSRFProtect
 from pymongo import MongoClient, DESCENDING, ASCENDING
-from pymongo.errors import DuplicateKeyError, PyMongoError
+from pymongo.errors import DuplicateKeyError, OperationFailure, PyMongoError
+from pymongo import ReturnDocument
+from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(BASE_DIR, "atlas-credentials.env"))
 MONGODB_URI = os.environ.get("MONGODB_URI")
 if not MONGODB_URI:
     raise RuntimeError("MONGODB_URI must be set in the environment or atlas-credentials.env")
-APP_USERNAME = os.environ.get("APP_USERNAME", "revisit")
-APP_PASSWORD = os.environ.get("APP_PASSWORD")
-if not APP_PASSWORD:
-    raise RuntimeError("APP_PASSWORD must be set in the environment or atlas-credentials.env")
 
 app = Flask(__name__)
+DEPLOYED = bool(
+    os.environ.get("RAILWAY_ENVIRONMENT")
+    or os.environ.get("RAILWAY_ENVIRONMENT_NAME")
+    or os.environ.get("RENDER")
+)
+SECRET_KEY = os.environ.get("SECRET_KEY")
+if DEPLOYED and not SECRET_KEY:
+    raise RuntimeError("SECRET_KEY must be set to a stable random value in the hosting environment")
+app.config.update(
+    SECRET_KEY=SECRET_KEY or secrets.token_hex(32),
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=os.environ.get(
+        "SESSION_COOKIE_SECURE", "true" if DEPLOYED else "false"
+    ).lower() == "true",
+)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+csrf = CSRFProtect(app)
+login_manager = LoginManager(app)
+login_manager.login_view = "login"
+login_manager.login_message = "Sign in to access your library."
 mongo_client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=5000)
 database = mongo_client[os.environ.get("MONGODB_DATABASE", "revisit")]
+users_collection = database["users"]
+login_attempts_collection = database["login_attempts"]
 items_collection = database["items"]
 collections_collection = database["collections"]
 imports_collection = database["imports"]
+DUMMY_PIN_HASH = generate_password_hash(secrets.token_urlsafe(16), method="scrypt")
 
 
-@app.before_request
-def require_authentication():
-    if request.endpoint == "healthcheck":
-        return None
+class User(UserMixin):
+    def __init__(self, document):
+        self.id = str(document["_id"])
+        self.username = document["username"]
+        self.email = document["email"]
 
-    credentials = request.authorization
-    if (
-        credentials
-        and credentials.type.lower() == "basic"
-        and secrets.compare_digest((credentials.username or "").encode(), APP_USERNAME.encode())
-        and secrets.compare_digest((credentials.password or "").encode(), APP_PASSWORD.encode())
-    ):
-        return None
 
-    return Response(
-        "Authentication required", 401,
-        {"WWW-Authenticate": 'Basic realm="Revisit"'},
+@login_manager.user_loader
+def load_user(user_id):
+    document = users_collection.find_one({"_id": user_id})
+    return User(document) if document else None
+
+
+def current_user_id():
+    return current_user.get_id()
+
+
+def login_attempt_key(username):
+    window = int(datetime.now(timezone.utc).timestamp()) // 900
+    remote_address = request.remote_addr or "unknown"
+    return hashlib.sha256(f"{remote_address}:{username}:{window}".encode()).hexdigest()
+
+
+def registration_attempt_key():
+    window = int(datetime.now(timezone.utc).timestamp()) // 900
+    remote_address = request.remote_addr or "unknown"
+    return hashlib.sha256(f"register:{remote_address}:{window}".encode()).hexdigest()
+
+
+def record_rate_limit_attempt(key):
+    return login_attempts_collection.find_one_and_update(
+        {"_id": key},
+        {
+            "$inc": {"attempts": 1},
+            "$setOnInsert": {
+                "expires_at": datetime.now(timezone.utc) + timedelta(minutes=30)
+            },
+        },
+        upsert=True,
+        return_document=ReturnDocument.AFTER,
     )
+
+
+def owned(query=None):
+    return {**(query or {}), "user_id": current_user_id()}
+
+
+def safe_next_url():
+    target = request.args.get("next", "")
+    parsed = urlparse(target)
+    if (
+        parsed.scheme
+        or parsed.netloc
+        or "\\" in target
+        or not target.startswith("/")
+        or target.startswith("//")
+    ):
+        return url_for("index")
+    return target
 
 
 def init_db():
     mongo_client.admin.command("ping")
-    items_collection.create_index([("added_at", DESCENDING)])
-    items_collection.create_index([("duration_minutes", ASCENDING)])
-    items_collection.create_index([("tags", ASCENDING)])
-    items_collection.create_index([("collections", ASCENDING)])
-    collections_collection.create_index("name", unique=True)
-    imports_collection.create_index("url", unique=True)
-    imports_collection.create_index([("queued_at", DESCENDING)])
+    users_collection.create_index("username_key", unique=True, name="users_username_unique")
+    users_collection.create_index("email_key", unique=True, name="users_email_unique")
+    login_attempts_collection.create_index("expires_at", expireAfterSeconds=0)
+    items_collection.create_index([("user_id", ASCENDING), ("added_at", DESCENDING)])
+    items_collection.create_index([("user_id", ASCENDING), ("duration_minutes", ASCENDING)])
+    items_collection.create_index([("user_id", ASCENDING), ("tags", ASCENDING)])
+    items_collection.create_index([("user_id", ASCENDING), ("collections", ASCENDING)])
+    drop_legacy_index(collections_collection, "name_1")
+    collections_collection.create_index(
+        [("user_id", ASCENDING), ("name", ASCENDING)],
+        unique=True,
+        name="collections_owner_name_unique",
+    )
+    drop_legacy_index(imports_collection, "url_1")
+    imports_collection.create_index(
+        [("user_id", ASCENDING), ("url", ASCENDING)],
+        unique=True,
+        name="imports_owner_url_unique",
+    )
+    imports_collection.create_index([("user_id", ASCENDING), ("queued_at", DESCENDING)])
+
+
+def drop_legacy_index(collection, index_name):
+    if index_name not in collection.index_information():
+        return
+    try:
+        collection.drop_index(index_name)
+    except OperationFailure as error:
+        if error.code != 27 and "index not found" not in str(error).lower():
+            raise
 
 
 def item_for_template(document):
@@ -69,16 +159,20 @@ def item_for_template(document):
 def collection_names():
     return [
         row["name"]
-        for row in collections_collection.find({}, {"_id": 0, "name": 1}).sort("name", ASCENDING)
+        for row in collections_collection.find(
+            owned(), {"_id": 0, "name": 1}
+        ).sort("name", ASCENDING)
     ]
 
 
 @app.context_processor
 def inject_library_options():
+    if not current_user.is_authenticated:
+        return {"all_tags": [], "all_collections": []}
     return {
         "all_tags": sorted(
             tag
-            for tag in items_collection.distinct("tags")
+            for tag in items_collection.distinct("tags", {"user_id": current_user_id()})
             if isinstance(tag, str) and tag
         ),
         "all_collections": collection_names(),
@@ -94,18 +188,113 @@ def healthcheck():
     return jsonify(status="healthy")
 
 
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if current_user.is_authenticated:
+        return redirect(url_for("index"))
+    if request.method == "POST":
+        attempt_key = registration_attempt_key()
+        previous_attempts = login_attempts_collection.find_one({"_id": attempt_key})
+        if previous_attempts and previous_attempts.get("attempts", 0) >= 10:
+            return render_template(
+                "register.html",
+                errors=["Too many attempts. Try again in 15 minutes."],
+                username=request.form.get("username", "").strip(),
+                email=request.form.get("email", "").strip(),
+            ), 429
+        record_rate_limit_attempt(attempt_key)
+
+        username = request.form.get("username", "").strip()
+        email = request.form.get("email", "").strip()
+        pin = request.form.get("password", "")
+        username_key = username.casefold()
+        email_key = email.casefold()
+        errors = []
+        if not re.fullmatch(r"[A-Za-z0-9_]{3,30}", username):
+            errors.append("Username must be 3–30 letters, numbers, or underscores.")
+        if len(email) > 254 or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+            errors.append("Enter a valid email address.")
+        if not re.fullmatch(r"[0-9]{4}", pin):
+            errors.append("PIN must be exactly four digits.")
+        if errors:
+            return render_template("register.html", errors=errors, username=username, email=email), 400
+
+        document = {
+            "_id": uuid.uuid4().hex,
+            "username": username,
+            "username_key": username_key,
+            "email": email,
+            "email_key": email_key,
+            "pin_hash": generate_password_hash(pin, method="scrypt"),
+            "created_at": datetime.now(timezone.utc),
+        }
+        try:
+            users_collection.insert_one(document)
+        except DuplicateKeyError:
+            return render_template(
+                "register.html",
+                errors=["That username or email is already registered."],
+                username=username,
+                email=email,
+            ), 409
+        login_user(User(document))
+        return redirect(url_for("index"))
+    return render_template("register.html", errors=[], username="", email="")
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if current_user.is_authenticated:
+        return redirect(url_for("index"))
+    if request.method == "POST":
+        username_key = request.form.get("username", "").strip().casefold()
+        pin = request.form.get("password", "")
+        attempt_key = login_attempt_key(username_key)
+        previous_attempts = login_attempts_collection.find_one({"_id": attempt_key})
+        if previous_attempts and previous_attempts.get("attempts", 0) >= 5:
+            return render_template(
+                "login.html", error="Too many attempts. Try again in 15 minutes.", username=username_key
+            ), 429
+
+        document = users_collection.find_one({"username_key": username_key})
+        candidate_pin = pin if re.fullmatch(r"[0-9]{4}", pin) else "0000"
+        pin_hash = document["pin_hash"] if document else DUMMY_PIN_HASH
+        valid_pin = bool(document) and check_password_hash(pin_hash, candidate_pin)
+        if not valid_pin:
+            record_rate_limit_attempt(attempt_key)
+            return render_template(
+                "login.html", error="Username or PIN is incorrect.", username=username_key
+            ), 401
+
+        login_attempts_collection.delete_one({"_id": attempt_key})
+        login_user(User(document))
+        return redirect(safe_next_url())
+    return render_template("login.html", error="", username="")
+
+
+@app.route("/logout", methods=["POST"])
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for("login"))
+
+
 def save_collection(name):
     collections_collection.update_one(
-        {"name": name},
-        {"$setOnInsert": {"name": name, "created_at": datetime.utcnow().isoformat()}},
+        owned({"name": name}),
+        {"$setOnInsert": {
+            "user_id": current_user_id(),
+            "name": name,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }},
         upsert=True,
     )
 
 
 def delete_empty_collections(names):
     for name in set(names):
-        if name and items_collection.count_documents({"collections": name}) == 0:
-            collections_collection.delete_one({"name": name})
+        if name and items_collection.count_documents(owned({"collections": name})) == 0:
+            collections_collection.delete_one(owned({"name": name}))
 
 
 def detect_platform(url: str) -> str:
@@ -230,6 +419,7 @@ def create_library_item(url, form, preview=None):
 
     document = {
         "_id": uuid.uuid4().hex,
+        "user_id": current_user_id(),
         "url": url,
         "platform": platform,
         "title": title,
@@ -244,6 +434,7 @@ def create_library_item(url, form, preview=None):
 
 
 @app.route("/")
+@login_required
 def index():
     tag_filter = request.args.get("tag", "").strip()
     collection_filter = request.args.get("collection", "").strip()
@@ -256,7 +447,9 @@ def index():
         query["collections"] = collection_filter
     if q:
         search_pattern = {"$regex": re.escape(q), "$options": "i"}
-        matching_collections = collections_collection.distinct("name", {"name": search_pattern})
+        matching_collections = collections_collection.distinct(
+            "name", owned({"name": search_pattern})
+        )
         search_fields = [
             {"title": search_pattern},
             {"url": search_pattern},
@@ -270,7 +463,7 @@ def index():
 
     items = [
         item_for_template(document)
-        for document in items_collection.find(query).sort("added_at", DESCENDING)
+        for document in items_collection.find(owned(query)).sort("added_at", DESCENDING)
     ]
     return render_template(
         "index.html",
@@ -282,6 +475,7 @@ def index():
 
 
 @app.route("/discover")
+@login_required
 def discover():
     collection_filter = request.args.get("collection", "").strip()
     raw_minutes = request.args.get("minutes", "30").strip()
@@ -297,13 +491,13 @@ def discover():
         unknown_query["collections"] = collection_filter
     items = [
         item_for_template(document)
-        for document in items_collection.find(query).sort(
+        for document in items_collection.find(owned(query)).sort(
             [("duration_minutes", ASCENDING), ("added_at", DESCENDING)]
         )
     ]
     unknown_items = [
         item_for_template(document)
-        for document in items_collection.find(unknown_query).sort("added_at", DESCENDING)
+        for document in items_collection.find(owned(unknown_query)).sort("added_at", DESCENDING)
     ]
     return render_template(
         "discover.html",
@@ -315,6 +509,7 @@ def discover():
 
 
 @app.route("/add", methods=["GET", "POST"])
+@login_required
 def add():
     if request.method == "POST":
         url = request.form.get("url", "").strip()
@@ -327,6 +522,7 @@ def add():
 
 
 @app.route("/imports", methods=["GET", "POST"])
+@login_required
 def imports():
     if request.method == "POST":
         lines = [line.strip() for line in request.form.get("urls", "").splitlines() if line.strip()]
@@ -339,13 +535,14 @@ def imports():
             if parsed.scheme not in ("http", "https") or not parsed.netloc:
                 invalid += 1
                 continue
-            if items_collection.find_one({"url": url}, {"_id": 1}):
+            if items_collection.find_one(owned({"url": url}), {"_id": 1}):
                 already_saved += 1
                 continue
             try:
                 imports_collection.insert_one(
                     {
                         "_id": uuid.uuid4().hex,
+                        "user_id": current_user_id(),
                         "url": url,
                         "platform": detect_platform(url),
                         "queued_at": datetime.utcnow().isoformat(),
@@ -364,7 +561,7 @@ def imports():
 
     pending = [
         item_for_template(document)
-        for document in imports_collection.find().sort("queued_at", DESCENDING)
+        for document in imports_collection.find(owned()).sort("queued_at", DESCENDING)
     ]
     return render_template(
         "imports.html",
@@ -383,8 +580,9 @@ def imports():
 
 
 @app.route("/imports/<import_id>/preview", methods=["POST"])
+@login_required
 def import_preview(import_id):
-    imported = imports_collection.find_one({"_id": import_id})
+    imported = imports_collection.find_one(owned({"_id": import_id}))
     if not imported:
         return jsonify({"error": "Import not found"}), 404
     if imported.get("preview_checked"):
@@ -401,7 +599,7 @@ def import_preview(import_id):
         thumbnail = None
 
     imports_collection.update_one(
-        {"_id": import_id},
+        owned({"_id": import_id}),
         {"$set": {
             "title": title,
             "thumbnail": thumbnail,
@@ -417,14 +615,16 @@ def import_preview(import_id):
 
 
 @app.route("/imports/<import_id>/dismiss", methods=["POST"])
+@login_required
 def dismiss_import(import_id):
-    imports_collection.delete_one({"_id": import_id})
+    imports_collection.delete_one(owned({"_id": import_id}))
     return redirect(url_for("imports"))
 
 
 @app.route("/imports/clear", methods=["POST"])
+@login_required
 def clear_imports():
-    result = imports_collection.delete_many({})
+    result = imports_collection.delete_many(owned())
     return redirect(url_for("imports", cleared=result.deleted_count))
 
 
@@ -444,6 +644,7 @@ def promote_import(imported, collection, tags):
 
 
 @app.route("/imports/save-selected", methods=["POST"])
+@login_required
 def save_selected_imports():
     import_ids = request.form.getlist("import_ids")
     if not import_ids:
@@ -451,15 +652,15 @@ def save_selected_imports():
 
     moved = skipped_existing = selection_error = 0
     for import_id in import_ids:
-        imported = imports_collection.find_one({"_id": import_id})
+        imported = imports_collection.find_one(owned({"_id": import_id}))
         if not imported:
             continue
         collection = request.form.get(f"collection_{import_id}", "").strip()
         if not collection:
             selection_error += 1
             continue
-        if items_collection.find_one({"url": imported["url"]}, {"_id": 1}):
-            imports_collection.delete_one({"_id": import_id})
+        if items_collection.find_one(owned({"url": imported["url"]}), {"_id": 1}):
+            imports_collection.delete_one(owned({"_id": import_id}))
             skipped_existing += 1
             continue
         promote_import(
@@ -467,7 +668,7 @@ def save_selected_imports():
             collection,
             request.form.get(f"tags_{import_id}", ""),
         )
-        imports_collection.delete_one({"_id": import_id})
+        imports_collection.delete_one(owned({"_id": import_id}))
         moved += 1
 
     return redirect(url_for(
@@ -479,11 +680,12 @@ def save_selected_imports():
 
 
 @app.route("/imports/save-all", methods=["POST"])
+@login_required
 def save_all_imports():
     collection = request.form.get("collection", "").strip() or "Imported"
     selected_ids = request.form.getlist("import_ids")
     query = {"_id": {"$in": selected_ids}} if selected_ids else {}
-    pending = list(imports_collection.find(query))
+    pending = list(imports_collection.find(owned(query)))
     if not pending:
         return redirect(url_for("imports"))
 
@@ -491,12 +693,13 @@ def save_all_imports():
     urls = [item["url"] for item in pending]
     saved_urls = {
         item["url"]
-        for item in items_collection.find({"url": {"$in": urls}}, {"url": 1})
+        for item in items_collection.find(owned({"url": {"$in": urls}}), {"url": 1})
     }
     added_at = datetime.utcnow().isoformat()
     new_items = [
         {
             "_id": uuid.uuid4().hex,
+            "user_id": current_user_id(),
             "url": item["url"],
             "platform": item["platform"],
             "title": item["url"],
@@ -512,7 +715,9 @@ def save_all_imports():
     ]
     if new_items:
         items_collection.insert_many(new_items)
-    imports_collection.delete_many({"_id": {"$in": [item["_id"] for item in pending]}})
+    imports_collection.delete_many(
+        owned({"_id": {"$in": [item["_id"] for item in pending]}})
+    )
     return redirect(url_for(
         "imports",
         moved=len(new_items),
@@ -522,8 +727,9 @@ def save_all_imports():
 
 
 @app.route("/item/<item_id>/edit", methods=["GET", "POST"])
+@login_required
 def edit_item(item_id):
-    item = items_collection.find_one({"_id": item_id})
+    item = items_collection.find_one(owned({"_id": item_id}))
     if not item:
         return redirect(url_for("index"))
 
@@ -552,7 +758,7 @@ def edit_item(item_id):
 
         previous_collections = item.get("collections", [])
         items_collection.update_one(
-            {"_id": item_id},
+            owned({"_id": item_id}),
             {"$set": {
                 "title": title,
                 "duration_minutes": duration_minutes,
@@ -567,15 +773,17 @@ def edit_item(item_id):
 
 
 @app.route("/item/<item_id>/delete", methods=["POST"])
+@login_required
 def delete_item(item_id):
-    item = items_collection.find_one({"_id": item_id}, {"collections": 1})
-    items_collection.delete_one({"_id": item_id})
+    item = items_collection.find_one(owned({"_id": item_id}), {"collections": 1})
+    items_collection.delete_one(owned({"_id": item_id}))
     if item:
         delete_empty_collections(item.get("collections", []))
     return redirect(url_for("index"))
 
 
 @app.route("/collections", methods=["GET", "POST"])
+@login_required
 def collections():
     if request.method == "POST":
         action = request.form.get("action", "create")
@@ -585,17 +793,17 @@ def collections():
             if old_name and new_name and old_name != new_name:
                 try:
                     result = collections_collection.update_one(
-                        {"name": old_name}, {"$set": {"name": new_name}}
+                        owned({"name": old_name}), {"$set": {"name": new_name}}
                     )
                 except DuplicateKeyError:
                     return redirect(url_for("collections", error="name_exists"))
                 if result.modified_count:
                     items_collection.update_many(
-                        {"collections": old_name},
+                        owned({"collections": old_name}),
                         {"$addToSet": {"collections": new_name}},
                     )
                     items_collection.update_many(
-                        {"collections": old_name},
+                        owned({"collections": old_name}),
                         {"$pull": {"collections": old_name}},
                     )
             return redirect(url_for("collections", renamed=new_name or old_name))
@@ -605,7 +813,7 @@ def collections():
             if tag:
                 save_collection(tag)
                 items_collection.update_many(
-                    {"tags": tag}, {"$addToSet": {"collections": tag}}
+                    owned({"tags": tag}), {"$addToSet": {"collections": tag}}
                 )
             return redirect(url_for("collections", converted=tag))
 
@@ -618,17 +826,19 @@ def collections():
         {
             "name": document["name"],
             "count": items_collection.count_documents(
-                {"collections": document["name"]}
+                owned({"collections": document["name"]})
             ),
         }
-        for document in collections_collection.find({}, {"_id": 0, "name": 1}).sort(
+        for document in collections_collection.find(
+            owned(), {"_id": 0, "name": 1}
+        ).sort(
             "name", ASCENDING
         )
     ]
     existing_collections = set(collection_names())
     convertible_tags = sorted(
         tag
-        for tag in items_collection.distinct("tags")
+        for tag in items_collection.distinct("tags", {"user_id": current_user_id()})
         if isinstance(tag, str) and tag and tag not in existing_collections
     )
     return render_template(

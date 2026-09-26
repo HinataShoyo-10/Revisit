@@ -3,6 +3,7 @@
 {% block content %}
 
 <form class="add-form" method="post" action="{{ url_for('add') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <label for="url">Paste the link</label>
   <input type="url" id="url" name="url" placeholder="https://youtube.com/... or https://instagram.com/reel/..." required>
 

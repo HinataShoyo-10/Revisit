@@ -12,13 +12,25 @@
 <header class="topbar">
   <a class="logo" href="{{ url_for('index') }}">Revisit</a>
   <nav>
+    {% if current_user.is_authenticated %}
     <a href="{{ url_for('index') }}">Library</a>
     <a href="{{ url_for('discover') }}">Time to watch</a>
     <a href="{{ url_for('collections') }}">Collections</a>
     <a href="{{ url_for('imports') }}">Import inbox</a>
     <a class="btn-add" href="{{ url_for('add') }}">More options</a>
+    <span class="account-name">{{ current_user.username }}</span>
+    <form class="logout-form" method="post" action="{{ url_for('logout') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="logout-button">Log out</button>
+    </form>
+    {% else %}
+    <a href="{{ url_for('login') }}">Log in</a>
+    <a class="btn-add" href="{{ url_for('register') }}">Create account</a>
+    {% endif %}
   </nav>
+  {% if current_user.is_authenticated %}
   <form class="quick-save" method="post" action="{{ url_for('add') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="url" name="url" aria-label="Link to save" placeholder="Paste a video link..." required>
     <input type="text" name="tags" list="saved-tags" aria-label="Optional tag" placeholder="Tag (optional)">
     <datalist id="saved-tags">
@@ -34,8 +46,14 @@
     </select>
     <button type="submit">Save link</button>
   </form>
+  {% endif %}
 </header>
 <main>
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% for category, message in messages %}
+  <p class="auth-message auth-message--{{ category }}" role="status">{{ message }}</p>
+  {% endfor %}
+{% endwith %}
 {% block content %}{% endblock %}
 </main>
 <script>

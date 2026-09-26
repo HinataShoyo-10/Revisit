@@ -6,14 +6,16 @@ one file of backend logic, no JS framework.
 
 ## Run locally
 
-Set `APP_PASSWORD` in `atlas-credentials.env` before starting the app. The
-optional `APP_USERNAME` defaults to `revisit`.
-
 ```
 pip install -r requirements.txt
 python app.py
 ```
 Visit http://127.0.0.1:5000
+
+## Tests
+
+Install test dependencies with `pip install -r requirements-dev.txt`, then run
+`python -m unittest discover -s tests -v`.
 
 ## Database
 
@@ -22,36 +24,39 @@ put the connection string in `atlas-credentials.env` beside `app.py` (the file
 is ignored by Git), or provide it as an environment variable. The optional
 `MONGODB_DATABASE` variable selects the database; it defaults to `revisit`.
 
-The database uses three collections:
+The database uses these collections:
 
-- `items`: one document per saved link, including preview fields, duration,
-   tags, and collection names embedded as arrays.
-- `collections`: one document per collection name, including collections with
-   no saved links.
-- `imports`: pending links waiting for review and categorization.
+- `users`: unique normalized username and email keys plus a salted PIN hash.
+- `items`, `collections`, and `imports`: every document is scoped by `user_id`.
+- `login_attempts`: short-lived MongoDB-backed login throttling records.
 
 Use **Import inbox** to paste up to 100 URLs per batch. Save a large batch into
 one staging collection (default `Imported`), then use **Organize** on library
 items to assign their final titles, tags, durations, and collections. Duplicate,
 invalid, and already-saved URLs are reported and skipped.
 
-Indexes are created automatically on startup. Existing `reelbox.db` data is not
-imported automatically; export or migrate it before removing the local file.
+Indexes are created automatically on startup. Existing MongoDB records created
+before accounts were added remain unowned until assigned. After creating the
+account that should own the existing library, run
+`python migrate_legacy_data.py <username>` and confirm the transfer. This does
+not import the old `reelbox.db` SQLite database.
 
 ## Deployment
 
-For Railway, this repository includes `railway.json`, which starts the app with
-`gunicorn --bind 0.0.0.0:$PORT app:app` and checks `/healthz`. If a custom start
-command is configured in the Railway service settings, set it to that command;
-`main:app` will fail because this project defines the Flask app in `app.py`.
+For Railway, `railway.json` starts `gunicorn --bind 0.0.0.0:$PORT app:app` and
+checks `/healthz`. If a custom start command is configured in Railway settings,
+replace it with that command; `main:app` does not exist in this project.
 
-Set `MONGODB_URI` and a strong `APP_PASSWORD` in the Railway service variables.
-`APP_USERNAME` defaults to `revisit` and `MONGODB_DATABASE` defaults to
-`revisit`. The ignored `atlas-credentials.env` file is for local development;
-Railway does not receive it from the repository. The app uses HTTP Basic Auth.
+Set `MONGODB_URI` and a stable, random `SECRET_KEY` in Railway Variables. Also
+set `SESSION_COOKIE_SECURE=true` so login cookies are sent only over HTTPS.
+`MONGODB_DATABASE` defaults to `revisit`. Railway does not receive the ignored
+local `atlas-credentials.env` file.
+
+Generate a session key with `openssl rand -hex 32`; keep the same value across
+deployments and replicas. Railway startup fails if `SECRET_KEY` is missing.
 
 For Render, use the Blueprint in `render.yaml` and provide `MONGODB_URI` and
-`APP_PASSWORD` when prompted.
+`SECRET_KEY` when prompted. Set `SESSION_COOKIE_SECURE=true` there as well.
 
 In MongoDB Atlas, allow network access from the deployed service before
 deploying. For production, use a restricted IP access list where your hosting
@@ -61,9 +66,22 @@ the repository. Since the library is stored in MongoDB Atlas, it does not
 depend on the host's local disk.
 
 For other hosts, install dependencies with `pip install -r requirements.txt`
-and start with `gunicorn --bind 0.0.0.0:$PORT app:app`. Configure `MONGODB_URI`
-and `APP_PASSWORD` as secrets, plus optional `APP_USERNAME` and
-`MONGODB_DATABASE`, in the hosting provider's environment. Serve behind HTTPS.
+and start with `gunicorn --bind 0.0.0.0:$PORT app:app`. Configure `MONGODB_URI`,
+a stable `SECRET_KEY`, and `SESSION_COOKIE_SECURE=true` in the host environment.
+Serve behind HTTPS.
+
+## Accounts and security
+
+Each account has a unique username and email. The requested four-digit PIN is
+salted and hashed, and login failures and signup attempts are throttled using
+MongoDB so the limits are shared across app workers. All state-changing forms
+use CSRF protection, and every library query is scoped to its owner.
+
+A four-digit PIN has only 10,000 possible values and is weaker than a normal
+password. A longer password or passphrase is strongly recommended before
+opening registration publicly. Email verification, password/PIN recovery,
+account deletion, and multi-factor authentication are not implemented yet;
+email addresses are unique but not verified.
 
 ## Time-based discovery
 
@@ -95,5 +113,4 @@ oEmbed endpoint).
 
 ## Not built
 
-- Multi-user accounts / login
 - Browser extension or share-sheet (you'd paste the link manually)
