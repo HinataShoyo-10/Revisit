@@ -40,11 +40,18 @@ imported automatically; export or migrate it before removing the local file.
 
 ## Deployment
 
-This repository includes a Render Blueprint in `render.yaml`. In Render, create
-a new Blueprint from the repository and provide `MONGODB_URI` and a strong
-`APP_PASSWORD` when prompted. `APP_USERNAME` defaults to `revisit` and
-`MONGODB_DATABASE` defaults to `revisit`. The app uses HTTP Basic Auth, and the
-service listens on Render's `PORT` and uses `/healthz` to verify MongoDB access.
+For Railway, this repository includes `railway.json`, which starts the app with
+`gunicorn --bind 0.0.0.0:$PORT app:app` and checks `/healthz`. If a custom start
+command is configured in the Railway service settings, set it to that command;
+`main:app` will fail because this project defines the Flask app in `app.py`.
+
+Set `MONGODB_URI` and a strong `APP_PASSWORD` in the Railway service variables.
+`APP_USERNAME` defaults to `revisit` and `MONGODB_DATABASE` defaults to
+`revisit`. The ignored `atlas-credentials.env` file is for local development;
+Railway does not receive it from the repository. The app uses HTTP Basic Auth.
+
+For Render, use the Blueprint in `render.yaml` and provide `MONGODB_URI` and
+`APP_PASSWORD` when prompted.
 
 In MongoDB Atlas, allow network access from the deployed service before
 deploying. For production, use a restricted IP access list where your hosting
