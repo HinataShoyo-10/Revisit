@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 
 import requests
 from dotenv import load_dotenv
-from flask import Flask, jsonify, redirect, render_template, request, url_for
+from flask import Flask, flash, jsonify, redirect, render_template, request, send_from_directory, session, url_for
 from flask_login import LoginManager, UserMixin, current_user, login_required, login_user, logout_user
 from flask_wtf.csrf import CSRFProtect
 from pymongo import MongoClient, DESCENDING, ASCENDING
@@ -188,6 +188,14 @@ def healthcheck():
     return jsonify(status="healthy")
 
 
+@app.route("/service-worker.js")
+def service_worker():
+    response = send_from_directory(os.path.join(BASE_DIR, "static"), "service-worker.js")
+    response.headers["Service-Worker-Allowed"] = "/"
+    response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if current_user.is_authenticated:
@@ -238,7 +246,7 @@ def register():
                 email=email,
             ), 409
         login_user(User(document))
-        return redirect(url_for("index"))
+        return redirect(safe_next_url())
     return render_template("register.html", errors=[], username="", email="")
 
 
@@ -519,6 +527,59 @@ def add():
         return redirect(url_for("index"))
 
     return render_template("add.html")
+
+
+def shared_url_from_form():
+    candidates = [request.form.get("url", ""), request.form.get("text", "")]
+    for candidate in candidates:
+        match = re.search(r"https?://[^\s<>]+", candidate)
+        if not match:
+            continue
+        url = match.group(0).rstrip(".,;!?)]")
+        parsed = urlparse(url)
+        if parsed.scheme in {"http", "https"} and parsed.hostname and not parsed.username:
+            return url
+    return None
+
+
+def queue_shared_url(url):
+    if items_collection.find_one(owned({"url": url}), {"_id": 1}):
+        return redirect(url_for("imports", already_saved=1))
+    if imports_collection.find_one(owned({"url": url}), {"_id": 1}):
+        return redirect(url_for("imports", duplicate=1))
+    try:
+        imports_collection.insert_one({
+            "_id": uuid.uuid4().hex,
+            "user_id": current_user_id(),
+            "url": url,
+            "platform": detect_platform(url),
+            "queued_at": datetime.now(timezone.utc).isoformat(),
+        })
+    except DuplicateKeyError:
+        return redirect(url_for("imports", duplicate=1))
+    return redirect(url_for("imports", queued=1))
+
+
+@app.route("/share", methods=["POST"])
+@csrf.exempt
+def receive_shared_link():
+    url = shared_url_from_form()
+    if not url:
+        flash("No valid video link was found in the shared content.", "error")
+        return redirect(url_for("imports") if current_user.is_authenticated else url_for("login"))
+    if not current_user.is_authenticated:
+        session["pending_shared_url"] = url
+        return redirect(url_for("login", next=url_for("continue_shared_link")))
+    return queue_shared_url(url)
+
+
+@app.route("/share/continue")
+@login_required
+def continue_shared_link():
+    url = session.pop("pending_shared_url", None)
+    if not url:
+        return redirect(url_for("imports"))
+    return queue_shared_url(url)
 
 
 @app.route("/imports", methods=["GET", "POST"])

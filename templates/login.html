@@ -13,6 +13,6 @@
     <input id="password" name="password" type="password" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" autocomplete="current-password" required>
     <button type="submit" class="btn-submit">Log in</button>
   </form>
-  <p class="auth-switch">New to Revisit? <a href="{{ url_for('register') }}">Create an account</a></p>
+  <p class="auth-switch">New to Revisit? <a href="{{ url_for('register', next=request.args.get('next', '')) }}">Create an account</a></p>
 </section>
 {% endblock %}

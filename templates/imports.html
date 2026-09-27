@@ -12,10 +12,13 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <label for="import-urls">Video links</label>
   <textarea id="import-urls" name="urls" rows="5" placeholder="https://www.instagram.com/reel/...&#10;https://www.youtube.com/watch?v=..." required></textarea>
+  <p class="apple-share-tip" id="apple-share-tip" hidden>On iPhone or iPad, copy the link from Share, then paste it here.</p>
   <div class="import-batch-actions">
     <span>Up to 100 links per batch</span>
+    <button type="button" class="import-clipboard-button" id="paste-shared-link">Paste from clipboard</button>
     <button type="submit" class="btn-submit">Add to inbox</button>
   </div>
+  <p class="import-feedback" id="clipboard-feedback" role="status" aria-live="polite" hidden></p>
 </form>
 
 {% if queued or already_saved or duplicate or invalid %}
@@ -124,6 +127,29 @@
 {% block scripts %}
 <script>
 (() => {
+  const pasteButton = document.getElementById("paste-shared-link");
+  const importTextarea = document.getElementById("import-urls");
+  const clipboardFeedback = document.getElementById("clipboard-feedback");
+  const appleShareTip = document.getElementById("apple-share-tip");
+  const appleMobile = /iPhone|iPad|iPod/.test(navigator.userAgent)
+    || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  if (appleMobile && appleShareTip) appleShareTip.hidden = false;
+  if (pasteButton && importTextarea && clipboardFeedback) {
+    pasteButton.addEventListener("click", async () => {
+      try {
+        const text = await navigator.clipboard.readText();
+        if (!text.trim()) throw new Error("Clipboard is empty");
+        importTextarea.value = [importTextarea.value.trim(), text.trim()].filter(Boolean).join("\n");
+        importTextarea.focus();
+        clipboardFeedback.textContent = "Link pasted. Add it to your inbox when ready.";
+        clipboardFeedback.hidden = false;
+      } catch {
+        clipboardFeedback.textContent = "Clipboard access was unavailable. Paste the link into the box above.";
+        clipboardFeedback.hidden = false;
+      }
+    });
+  }
+
   const selectionForm = document.getElementById("import-selection-form");
   if (selectionForm) {
     const selectedCount = document.getElementById("selected-import-count");

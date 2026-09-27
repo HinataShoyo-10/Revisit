@@ -17,7 +17,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#FF5C39">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Revisit">
 <title>{% block title %}Revisit{% endblock %}</title>
+<link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/revisit.svg') }}">
+<link rel="icon" href="{{ url_for('static', filename='icons/revisit.svg') }}" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
@@ -62,6 +69,9 @@
 {% block content %}{% endblock %}
 </main>
 <script>
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("{{ url_for('service_worker') }}").catch(() => {});
+}
 function toggleReadMore(button) {
   const title = document.getElementById(button.getAttribute("aria-controls"));
   const expanded = title.classList.toggle("is-expanded");

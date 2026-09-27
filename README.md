@@ -1,116 +1,227 @@
 # Revisit
 
-Paste-a-link organizer for saved YouTube/Instagram/TikTok content — preview
-thumbnails, multi-tags, collections, and time-based discovery. Flask + MongoDB,
-one file of backend logic, no JS framework.
+Revisit is a private, personal library for saving videos and links to watch
+later. Save YouTube, Instagram, TikTok, and other URLs; add tags, collections,
+and durations; then find something that fits the time you have. The app is built
+with Flask and MongoDB and can be installed as a Progressive Web App (PWA).
 
-## Run locally
+## Features
 
+- **Save links:** quick-save from the Library or use the full form to set a title, duration, tags, and one or more collections.
+- **Import inbox:** stage up to 100 URLs at once, review previews, dismiss unwanted links, and save all or selected links into a collection. Duplicate, invalid, and already-saved URLs are reported.
+- **Video previews:** fetch titles and thumbnails from YouTube oEmbed or public Open Graph metadata when available. Saving still works when a platform blocks preview requests.
+- **Time to watch:** filter saved videos by an approximate duration and optionally by collection. Items without a known duration appear separately.
+- **Search and organize:** search titles, platforms, URLs, tags, and collection names. Rename collections or convert a tag into a same-named collection without removing the tag.
+- **Per-account libraries:** account data is scoped to its owner in MongoDB.
+- **Install and share:** Android Chrome can share a video directly to Revisit; iOS uses a clipboard handoff (see [PWA installation and sharing](#pwa-installation-and-sharing)).
+
+## Requirements
+
+- Python 3.9 or newer
+- A reachable MongoDB deployment, such as MongoDB Atlas or a local MongoDB server
+- Git, if you are cloning the repository
+
+## Local installation
+
+**1. Clone the repository** and enter its directory:
+
+```sh
+git clone <repository-url>
+cd Revisit
 ```
-pip install -r requirements.txt
+
+**2. Create and activate a virtual environment:**
+
+```sh
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+On Windows PowerShell, activate it with `.\.venv\Scripts\Activate.ps1`.
+
+**3. Install the application dependencies:**
+
+```sh
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+**4. Configure MongoDB and a stable session secret** as described below.
+
+**5. Start the development server:**
+
+```sh
 python app.py
 ```
-Visit http://127.0.0.1:5000
+
+Open <http://127.0.0.1:5000>, create an account, and sign in. The health
+endpoint is <http://127.0.0.1:5000/healthz>.
+
+## Configuration
+
+The app reads `MONGODB_URI` from the process environment or from
+`atlas-credentials.env` beside `app.py`. That local file is ignored by Git.
+Create it with your own values:
+
+```dotenv
+MONGODB_URI=mongodb+srv://<db-user>:<db-password>@<cluster-host>/<database>?retryWrites=true&w=majority
+MONGODB_DATABASE=revisit
+SECRET_KEY=<long-random-secret>
+SESSION_COOKIE_SECURE=false
+```
+
+Replace the placeholders; do not commit real credentials. For MongoDB Atlas,
+create a database user and allow the development machine's IP in the Atlas
+network access list. A local MongoDB server can be used by setting
+`MONGODB_URI` to its connection string instead.
+
+Generate a secret with `python -c 'import secrets; print(secrets.token_hex(32))'`.
+Keep it stable between restarts so sessions remain valid. In local HTTP
+development, `SESSION_COOKIE_SECURE=false` allows the browser to send the login
+cookie. Use `true` behind HTTPS in production. `MONGODB_DATABASE` is optional
+and defaults to `revisit`.
+
+The app checks its MongoDB connection and creates required indexes when it
+starts. `/healthz` reports whether MongoDB is reachable.
+
+## Using Revisit
+
+### Library
+
+Paste a URL into the quick-save field or open the full save form. Titles,
+thumbnails, and some durations are fetched automatically where the source
+allows it. You can override the title and duration, add comma-separated tags,
+and assign a link to multiple collections. Open a saved item to edit its
+metadata or remove it from the library.
+
+### Import inbox
+
+Paste one URL per line and submit the batch. Revisit accepts up to 100 links per
+submission, identifies duplicates and links already in the library, and stages
+the rest in the inbox. Preview details load as you browse. Move individual
+links, selected links, or the whole batch into a collection; tags and collection
+choices can be set for selected items. Clearing or dismissing inbox entries
+does not delete items already saved in the Library.
+
+### Collections and tags
+
+Create collections from the Collections page or while saving a link. Rename a
+collection to update its memberships. Convert a tag into a collection to add
+all items with that tag; the original tag remains on those items. Empty
+collections are removed when items are moved or deleted.
+
+### Time to watch
+
+Enter a time limit to find saved videos whose known duration fits. The page can
+be limited to one collection. Videos without detected durations appear under
+**Duration unknown** and are not included among confirmed fits. Duration can be
+entered or corrected in the save/edit forms; accepted values range from 1 to
+1,440 minutes.
+
+### PWA installation and sharing
+
+The site must be served over HTTPS for service workers, installation, and
+clipboard access to work reliably. `localhost` is also treated as a secure
+context during development.
+
+**Android:** open Revisit in Chrome, install it from the browser menu, then use
+a video's Share action and select Revisit. The shared URL is placed in the
+Import inbox. If signed out, Revisit retains the URL through sign-in or account
+creation.
+
+**iPhone/iPad:** open Revisit in Safari and choose **Share → Add to Home Screen**.
+iOS does not currently allow web apps to register as Share sheet destinations.
+From a video's Share menu, copy its link, open Revisit, and tap **Paste from
+clipboard** in the Import inbox.
+
+The service worker provides a small offline page only. Library data and saving
+links require a network connection; private pages are not cached on the device.
 
 ## Tests
 
-Install test dependencies with `pip install -r requirements-dev.txt`, then run
-`python -m unittest discover -s tests -v`.
+Install the test dependency and run the test suite:
 
-## Database
+```sh
+python -m pip install -r requirements-dev.txt
+python -m unittest discover -s tests -v
+```
 
-Revisit connects to MongoDB Atlas using `MONGODB_URI`. For local development,
-put the connection string in `atlas-credentials.env` beside `app.py` (the file
-is ignored by Git), or provide it as an environment variable. The optional
-`MONGODB_DATABASE` variable selects the database; it defaults to `revisit`.
-
-The database uses these collections:
-
-- `users`: unique normalized username and email keys plus a salted PIN hash.
-- `items`, `collections`, and `imports`: every document is scoped by `user_id`.
-- `login_attempts`: short-lived MongoDB-backed login throttling records.
-
-Use **Import inbox** to paste up to 100 URLs per batch. Save a large batch into
-one staging collection (default `Imported`), then use **Organize** on library
-items to assign their final titles, tags, durations, and collections. Duplicate,
-invalid, and already-saved URLs are reported and skipped.
-
-Indexes are created automatically on startup. Existing MongoDB records created
-before accounts were added remain unowned until assigned. After creating the
-account that should own the existing library, run
-`python migrate_legacy_data.py <username>` and confirm the transfer. This does
-not import the old `reelbox.db` SQLite database.
+The account tests use `mongomock`; they do not require a running MongoDB server.
 
 ## Deployment
 
-For Railway, `railway.json` starts `gunicorn --bind 0.0.0.0:$PORT app:app` and
-checks `/healthz`. If a custom start command is configured in Railway settings,
-replace it with that command; `main:app` does not exist in this project.
+Deploy behind HTTPS and configure these environment variables in the hosting
+provider's secret settings:
 
-Set `MONGODB_URI` and a stable, random `SECRET_KEY` in Railway Variables. Also
-set `SESSION_COOKIE_SECURE=true` so login cookies are sent only over HTTPS.
-`MONGODB_DATABASE` defaults to `revisit`. Railway does not receive the ignored
-local `atlas-credentials.env` file.
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `MONGODB_URI` | Yes | MongoDB connection string |
+| `SECRET_KEY` | Yes | Stable, random Flask session/signing key |
+| `MONGODB_DATABASE` | No | Database name; defaults to `revisit` |
+| `SESSION_COOKIE_SECURE` | Recommended | Set to `true` when served over HTTPS |
 
-Generate a session key with `openssl rand -hex 32`; keep the same value across
-deployments and replicas. Railway startup fails if `SECRET_KEY` is missing.
+Generate `SECRET_KEY` with `openssl rand -hex 32` or Python's `secrets` module.
+Use the same value across restarts and all app instances. Do not upload
+`atlas-credentials.env`; deployment services do not receive that ignored local
+file. In MongoDB Atlas, allow network access from the host and restrict the IP
+access list where the provider supports stable outbound addresses.
 
-For Render, use the Blueprint in `render.yaml` and provide `MONGODB_URI` and
-`SECRET_KEY` when prompted. Set `SESSION_COOKIE_SECURE=true` there as well.
+### Railway
 
-In MongoDB Atlas, allow network access from the deployed service before
-deploying. For production, use a restricted IP access list where your hosting
-plan supports stable outbound IPs; avoid leaving Atlas open to `0.0.0.0/0`.
-Keep the connection string in the host's secret environment settings, not in
-the repository. Since the library is stored in MongoDB Atlas, it does not
-depend on the host's local disk.
+`railway.json` configures the build, health check, and start command. Set
+`MONGODB_URI` and `SECRET_KEY` in Railway Variables; set
+`SESSION_COOKIE_SECURE=true` when HTTPS is active. The start command is:
 
-For other hosts, install dependencies with `pip install -r requirements.txt`
-and start with `gunicorn --bind 0.0.0.0:$PORT app:app`. Configure `MONGODB_URI`,
-a stable `SECRET_KEY`, and `SESSION_COOKIE_SECURE=true` in the host environment.
-Serve behind HTTPS.
+```sh
+gunicorn --bind 0.0.0.0:$PORT app:app
+```
+
+If you set a custom Railway start command, use the command above. The Flask
+application is `app:app` (not `main:app`).
+
+### Render
+
+Use the repository's `render.yaml` Blueprint. Supply `MONGODB_URI` and
+`SECRET_KEY` when prompted. The Blueprint sets `MONGODB_DATABASE=revisit`,
+enables secure session cookies, and configures the Gunicorn start command and
+`/healthz` health check.
+
+### Other hosts
+
+Install `requirements.txt`, configure the variables above, and run
+`gunicorn --bind 0.0.0.0:$PORT app:app` behind an HTTPS reverse proxy or the
+host's managed TLS endpoint.
 
 ## Accounts and security
 
-Each account has a unique username and email. The requested four-digit PIN is
-salted and hashed, and login failures and signup attempts are throttled using
-MongoDB so the limits are shared across app workers. All state-changing forms
-use CSRF protection, and every library query is scoped to its owner.
+Usernames and email addresses are unique without regard to case. The current
+registration flow uses a four-digit PIN, stored as a salted password hash.
+Login and signup attempts are throttled using MongoDB records. State-changing
+forms use CSRF protection, and library, collection, and import queries are
+scoped to the signed-in account.
 
-A four-digit PIN has only 10,000 possible values and is weaker than a normal
-password. A longer password or passphrase is strongly recommended before
-opening registration publicly. Email verification, password/PIN recovery,
-account deletion, and multi-factor authentication are not implemented yet;
-email addresses are unique but not verified.
+A four-digit PIN has only 10,000 possible values and is weak protection for a
+publicly exposed service. Restrict registration or replace the PIN flow with a
+stronger password before opening the app broadly. Email addresses are not
+verified. Password/PIN recovery, account deletion, and multi-factor
+authentication are not implemented.
 
-## Time-based discovery
+## Preview limitations
 
-When saving a link, add its approximate duration in minutes. The **Time to
-watch** page then finds saved links that fit inside a selected time window, with
-an optional collection filter. Revisit automatically tries to read duration
-metadata from YouTube and public OG metadata from other platforms; the manual
-duration remains available when a platform blocks that request. Links without
-a detected duration also appear in a separate **Duration unknown** group and
-are not counted as confirmed fits.
+YouTube titles and thumbnails use YouTube's oEmbed endpoint; duration is read
+from the public video page when available. Other sites use public Open Graph
+metadata. Instagram and TikTok may block automated requests, so previews can be
+missing or incomplete. A preview failure does not prevent saving the URL.
 
-## Search and organization
+## Existing data
 
-Library search matches titles, source platforms, URLs, tags, and collection
-names. Collection names can be edited from the Collections page. Converting a
-tag creates a same-named collection and adds every matching item without
-removing the tag. Collections are removed automatically when moving or deleting
-items leaves them empty.
+MongoDB records created before account ownership was added remain unassigned.
+After creating the account that should own them, run:
 
-## Preview behavior
+```sh
+python migrate_legacy_data.py <username>
+```
 
-Instagram/TikTok previews come from scraping public `og:title` / `og:image`
-tags — no API key needed, but both platforms sometimes block automated
-requests. A blocked preview no longer prevents saving: Revisit keeps the link,
-uses the URL as its fallback title, and shows a platform placeholder when no
-thumbnail is available. Expired thumbnail URLs also fall back to the platform
-placeholder in the browser. YouTube previews are reliable (uses YouTube's own
-oEmbed endpoint).
-
-## Not built
-
-- Browser extension or share-sheet (you'd paste the link manually)
+The script reports the unassigned record counts and asks for confirmation before
+assigning them. It migrates existing unowned MongoDB records; it does not import
+the old SQLite `reelbox.db` file.

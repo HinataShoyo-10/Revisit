@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import unittest
@@ -31,10 +32,11 @@ class AccountTests(unittest.TestCase):
         self.assertIsNotNone(match)
         return match.group(1)
 
-    def register(self, client, username, email, pin):
-        token = self.csrf_token(client, "/register")
+    def register(self, client, username, email, pin, next_url=""):
+        path = f"/register?next={next_url}" if next_url else "/register"
+        token = self.csrf_token(client, path)
         return client.post(
-            "/register",
+            path,
             data={
                 "csrf_token": token,
                 "username": username,
@@ -75,6 +77,56 @@ class AccountTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(client.post("/logout").status_code, 400)
+
+    def test_shared_link_is_queued_for_signed_in_user(self):
+        self.register(self.alice, "alice", "alice@example.com", "1234")
+        response = self.alice.post(
+            "/share",
+            data={"url": "https://youtu.be/shared-video", "title": "A video"},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("queued=1", response.headers["Location"])
+        alice_id = revisit.users_collection.find_one({"username_key": "alice"})["_id"]
+        imported = revisit.imports_collection.find_one({"user_id": alice_id})
+        self.assertEqual(imported["url"], "https://youtu.be/shared-video")
+
+    def test_shared_link_survives_login_and_invalid_payload_is_rejected(self):
+        response = self.alice.post(
+            "/share",
+            data={"text": "Watch this: https://www.youtube.com/watch?v=shared"},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers["Location"], "/login?next=/share/continue")
+
+        self.register(
+            self.alice, "alice", "alice@example.com", "1234", "/share/continue"
+        )
+        alice_id = revisit.users_collection.find_one({"username_key": "alice"})["_id"]
+        imported = revisit.imports_collection.find_one({"user_id": alice_id})
+        self.assertEqual(imported["url"], "https://www.youtube.com/watch?v=shared")
+
+        invalid = self.alice.post("/share", data={"url": "javascript:alert(1)"})
+        self.assertEqual(invalid.status_code, 302)
+        self.assertIsNone(revisit.imports_collection.find_one({"url": "javascript:alert(1)"}))
+
+    def test_pwa_resources_and_clipboard_import_are_available(self):
+        manifest_response = self.alice.get("/static/manifest.webmanifest")
+        manifest = json.loads(manifest_response.get_data(as_text=True))
+        manifest_response.close()
+        self.assertEqual(manifest["share_target"]["action"], "/share")
+        self.assertEqual(manifest["share_target"]["method"], "POST")
+        icon = self.alice.get(manifest["icons"][0]["src"])
+        self.assertEqual(icon.status_code, 200)
+        icon.close()
+
+        service_worker = self.alice.get("/service-worker.js")
+        self.assertEqual(service_worker.status_code, 200)
+        self.assertEqual(service_worker.headers["Service-Worker-Allowed"], "/")
+        service_worker.close()
+
+        self.register(self.alice, "alice", "alice@example.com", "1234")
+        inbox = self.alice.get("/imports").get_data(as_text=True)
+        self.assertIn('id="paste-shared-link"', inbox)
 
     def test_accounts_cannot_read_or_delete_each_others_items(self):
         self.register(self.alice, "alice", "alice@example.com", "1234")

@@ -1,0 +1,29 @@
+{
+  "id": "/",
+  "name": "Revisit",
+  "short_name": "Revisit",
+  "description": "Save and organize videos for later.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#F2F0E8",
+  "theme_color": "#FF5C39",
+  "icons": [
+    {
+      "src": "/static/icons/revisit.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "share_target": {
+    "action": "/share",
+    "method": "POST",
+    "enctype": "application/x-www-form-urlencoded",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  }
+}

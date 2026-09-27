@@ -834,6 +834,15 @@ main {
   gap: 12px;
 }
 
+.import-clipboard-button {
+  padding: 9px 12px;
+  border: 2px solid var(--ink);
+  background: var(--accent-3);
+  font: 600 0.9rem "Space Grotesk", sans-serif;
+  cursor: pointer;
+}
+.apple-share-tip { margin: 0; font-size: 0.85rem; }
+
 .import-batch-actions span,
 .import-list-heading > span { font-size: 0.85rem; }
 .import-batch .btn-submit,
