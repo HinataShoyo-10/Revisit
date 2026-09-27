@@ -2,25 +2,39 @@
 {% block title %}Library — Revisit{% endblock %}
 {% block content %}
 
+<section class="page-heading">
+  <span class="eyebrow">Your saved videos</span>
+  <h1>Library</h1>
+</section>
+
+<form class="home-quick-save" method="post" action="{{ url_for('add') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="home-save-main">
+    <label class="sr-only" for="home-save-url">Video link to save</label>
+    <input id="home-save-url" type="url" name="url" placeholder="Paste a video link to save..." required>
+    <button type="submit">Save link</button>
+  </div>
+  <details class="home-save-options">
+    <summary>Optional: add tags or collection</summary>
+    <div class="home-save-fields">
+      <label class="sr-only" for="home-save-tags">Tags</label>
+      <input id="home-save-tags" type="text" name="tags" list="home-saved-tags" placeholder="Tags, comma-separated">
+      <datalist id="home-saved-tags">
+        {% for tag in all_tags %}<option value="{{ tag }}"></option>{% endfor %}
+      </datalist>
+      <label class="sr-only" for="home-save-collection">Collection</label>
+      <select id="home-save-collection" name="collections">
+        <option value="">No collection</option>
+        {% for collection in all_collections %}<option value="{{ collection }}">{{ collection }}</option>{% endfor %}
+      </select>
+    </div>
+  </details>
+</form>
+
 <form class="filterbar" method="get" action="{{ url_for('index') }}">
   <input type="text" name="q" placeholder="Search titles, sources, tags, collections..." value="{{ q }}">
-
-  <select name="tag" onchange="this.form.submit()">
-    <option value="">All tags</option>
-    {% for t in all_tags %}
-      <option value="{{ t }}" {% if t == tag_filter %}selected{% endif %}>{{ t }}</option>
-    {% endfor %}
-  </select>
-
-  <select name="collection" onchange="this.form.submit()">
-    <option value="">All collections</option>
-    {% for c in all_collections %}
-      <option value="{{ c }}" {% if c == collection_filter %}selected{% endif %}>{{ c }}</option>
-    {% endfor %}
-  </select>
-
   <button type="submit">Filter</button>
-  {% if tag_filter or collection_filter or q %}
+  {% if q %}
     <a class="clear-link" href="{{ url_for('index') }}">Clear</a>
   {% endif %}
 </form>

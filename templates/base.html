@@ -1,3 +1,17 @@
+{% macro signed_in_navigation() %}
+<a class="{% if request.endpoint == 'index' %}is-active{% endif %}" {% if request.endpoint == 'index' %}aria-current="page"{% endif %} href="{{ url_for('index') }}">Library</a>
+<a class="{% if request.endpoint == 'discover' %}is-active{% endif %}" {% if request.endpoint == 'discover' %}aria-current="page"{% endif %} href="{{ url_for('discover') }}">Time to watch</a>
+<a class="{% if request.endpoint == 'collections' %}is-active{% endif %}" {% if request.endpoint == 'collections' %}aria-current="page"{% endif %} href="{{ url_for('collections') }}">Collections</a>
+<a class="{% if request.endpoint in ['imports', 'import_preview', 'dismiss_import', 'clear_imports', 'save_selected_imports', 'save_all_imports'] %}is-active{% endif %}" {% if request.endpoint in ['imports', 'import_preview', 'dismiss_import', 'clear_imports', 'save_selected_imports', 'save_all_imports'] %}aria-current="page"{% endif %} href="{{ url_for('imports') }}">Import inbox</a>
+<a href="{{ url_for('add') }}">Full save form</a>
+<div class="nav-account">
+  <span class="account-name">{{ current_user.username }}</span>
+  <form class="logout-form" method="post" action="{{ url_for('logout') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="logout-button">Log out</button>
+  </form>
+</div>
+{% endmacro %}
 <!doctype html>
 <html lang="en">
 <head>
@@ -11,41 +25,32 @@
 <body>
 <header class="topbar">
   <a class="logo" href="{{ url_for('index') }}">Revisit</a>
-  <nav>
-    {% if current_user.is_authenticated %}
-    <a href="{{ url_for('index') }}">Library</a>
-    <a href="{{ url_for('discover') }}">Time to watch</a>
-    <a href="{{ url_for('collections') }}">Collections</a>
-    <a href="{{ url_for('imports') }}">Import inbox</a>
-    <a class="btn-add" href="{{ url_for('add') }}">More options</a>
-    <span class="account-name">{{ current_user.username }}</span>
-    <form class="logout-form" method="post" action="{{ url_for('logout') }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit" class="logout-button">Log out</button>
-    </form>
-    {% else %}
-    <a href="{{ url_for('login') }}">Log in</a>
-    <a class="btn-add" href="{{ url_for('register') }}">Create account</a>
-    {% endif %}
-  </nav>
   {% if current_user.is_authenticated %}
-  <form class="quick-save" method="post" action="{{ url_for('add') }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="url" name="url" aria-label="Link to save" placeholder="Paste a video link..." required>
-    <input type="text" name="tags" list="saved-tags" aria-label="Optional tag" placeholder="Tag (optional)">
-    <datalist id="saved-tags">
-      {% for tag in all_tags %}
-        <option value="{{ tag }}"></option>
-      {% endfor %}
-    </datalist>
-    <select name="collections" aria-label="Optional collection">
-      <option value="">No collection</option>
-      {% for collection in all_collections %}
-        <option value="{{ collection }}">{{ collection }}</option>
-      {% endfor %}
-    </select>
-    <button type="submit">Save link</button>
-  </form>
+  <details class="mobile-search">
+    <summary class="header-icon" aria-label="Search library" title="Search library">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <circle cx="10.8" cy="10.8" r="6.8" />
+        <path d="m16 16 5 5" />
+      </svg>
+      <span class="sr-only">Search library</span>
+    </summary>
+    <form class="mobile-search-panel" method="get" action="{{ url_for('index') }}">
+      <label class="sr-only" for="mobile-search-query">Search titles, sources, tags, or collections</label>
+      <input id="mobile-search-query" type="search" name="q" value="{{ request.args.get('q', '') }}" placeholder="Search everything...">
+      <button type="submit">Search</button>
+    </form>
+  </details>
+  <details class="site-menu">
+    <summary class="header-icon" aria-label="Open navigation" title="Open navigation">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M4 6h16M4 12h16M4 18h16" />
+      </svg>
+      <span class="sr-only">Open navigation</span>
+    </summary>
+    <nav aria-label="Main navigation">
+      {{ signed_in_navigation() }}
+    </nav>
+  </details>
   {% endif %}
 </header>
 <main>
@@ -63,6 +68,26 @@ function toggleReadMore(button) {
   button.textContent = expanded ? "Show less" : "Read more";
   button.setAttribute("aria-expanded", expanded);
 }
+const mobileSearchPanel = document.querySelector(".mobile-search");
+if (mobileSearchPanel) {
+  mobileSearchPanel.addEventListener("toggle", () => {
+    if (mobileSearchPanel.open) {
+      mobileSearchPanel.querySelector("input[type='search']").focus();
+    }
+  });
+}
+document.addEventListener("click", event => {
+  document.querySelectorAll("details[open]").forEach(panel => {
+    if (!panel.contains(event.target)) panel.open = false;
+  });
+});
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape") {
+    document.querySelectorAll("details[open]").forEach(panel => {
+      panel.open = false;
+    });
+  }
+});
 </script>
 {% block scripts %}{% endblock %}
 </body>

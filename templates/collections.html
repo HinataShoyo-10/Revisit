@@ -2,34 +2,59 @@
 {% block title %}Collections — Revisit{% endblock %}
 {% block content %}
 
-<section class="collection-tools" aria-label="Collection actions">
-  <form class="collection-tool" method="post" action="{{ url_for('collections') }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="hidden" name="action" value="create">
-    <label for="new-collection-name">Create collection</label>
-    <div class="collection-tool-controls">
-      <input id="new-collection-name" type="text" name="name" placeholder="Collection name" required>
-      <button type="submit">Create</button>
-    </div>
-  </form>
-
-  {% if convertible_tags %}
-  <form class="collection-tool" method="post" action="{{ url_for('collections') }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="hidden" name="action" value="convert_tag">
-    <label for="tag-to-collection">Convert tag to collection</label>
-    <div class="collection-tool-controls">
-      <select id="tag-to-collection" name="tag" required>
-        <option value="">Choose a tag</option>
-        {% for tag in convertible_tags %}
-        <option value="{{ tag }}">{{ tag }}</option>
-        {% endfor %}
-      </select>
-      <button type="submit">Convert</button>
-    </div>
-  </form>
-  {% endif %}
-</section>
+<div class="collection-page-heading">
+  <section class="page-heading">
+    <span class="eyebrow">Organize your library</span>
+    <h1>
+      <svg class="collection-title-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M3 6h7l2 2h9v11H3z" />
+        <path d="M3 9h18" />
+      </svg>
+      Collections
+    </h1>
+  </section>
+  <div class="collection-heading-actions" aria-label="Collection actions">
+    <details class="collection-action-panel">
+      <summary class="collection-action-icon" aria-label="Create collection" title="Create collection">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14" /></svg>
+        <span class="sr-only">Create collection</span>
+      </summary>
+      <form class="collection-tool-panel" method="post" action="{{ url_for('collections') }}">
+        <strong>Create collection</strong>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="create">
+        <label class="sr-only" for="new-collection-name">Collection name</label>
+        <input id="new-collection-name" type="text" name="name" placeholder="Collection name" required>
+        <button type="submit">Create</button>
+      </form>
+    </details>
+    {% if convertible_tags %}
+    <details class="collection-action-panel">
+      <summary class="collection-action-icon" aria-label="Convert tag to collection" title="Convert tag to collection">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M4 5h9l7 7-8 8-8-8z" />
+          <circle cx="9" cy="10" r="1" />
+          <path d="M11 14h7m-3-3 3 3-3 3" />
+        </svg>
+        <span class="sr-only">Convert tag to collection</span>
+      </summary>
+      <form class="collection-tool-panel" method="post" action="{{ url_for('collections') }}">
+        <strong>Convert tag to collection</strong>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="convert_tag">
+        <label class="sr-only" for="tag-to-collection">Choose a tag</label>
+        <select id="tag-to-collection" name="tag" required>
+          <option value="">Choose a tag</option>
+          {% for tag in convertible_tags %}
+          <option value="{{ tag }}">{{ tag }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit">Convert</button>
+      </form>
+    </details>
+    {% endif %}
+  </div>
+</div>
 
 {% if collection_error == 'name_exists' %}
 <p class="collection-message" role="alert">That collection name is already in use.</p>
@@ -44,6 +69,9 @@
   {% for c in collections %}
     <div class="collection-row">
       <div class="collection-row-head">
+        <span class="collection-folder-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" focusable="false"><path d="M3 6h7l2 2h9v11H3z" /><path d="M3 9h18" /></svg>
+        </span>
         <a class="collection-link" href="{{ url_for('index', collection=c.name) }}">
           <span class="collection-name">{{ c.name }}</span>
           <span class="collection-count">{{ c.count }}</span>
